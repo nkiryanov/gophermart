@@ -4,19 +4,18 @@ on:
   pull_request:
   push:
     branches:
-      - master
       - main
 
 jobs:
   statictest:
     runs-on: ubuntu-latest
-    container: golang:1.23
+    container: golang:1.24
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Download statictest binary
-        uses: robinraju/release-downloader@v1.8
+        uses: robinraju/release-downloader@v1.12
         with:
           repository: Yandex-Practicum/go-autotests
           latest: true
