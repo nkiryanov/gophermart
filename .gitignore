@@ -12,8 +12,10 @@
 *.out
 
 # Binaries
-cmd/gophermart/main
 cmd/gophermart/gophermart
+
+# Server runtime artifacts
+server_data.json
 
 # Dependency directories (remove the comment below to include it)
 vendor/
@@ -21,3 +23,6 @@ vendor/
 # IDEs directories
 .idea
 .vscode
+
+# masOS staff
+.DS_Store
