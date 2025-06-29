@@ -1,7 +1,7 @@
 .PHONY: test tests
 tests: test
 test:
-	go test -race -timeout=10s -count 1 ./...
+	go test -race -timeout=60s -count 1 ./...
 
 .PHONY: fmt
 fmt:
@@ -14,3 +14,4 @@ lint:
 .PHONE: generate
 generate:
 	go generate ./...
+	sqlc generate --file="internal/repository/sqlc.yml"
