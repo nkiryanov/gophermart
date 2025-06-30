@@ -11,7 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/nkiryanov/gophermart/internal/repository"
+	"github.com/nkiryanov/gophermart/internal/domain"
 )
 
 func Test_UserRepo(t *testing.T) {
@@ -74,7 +74,7 @@ func Test_UserRepo(t *testing.T) {
 			// Try to create second user with same username
 			_, err = r.CreateUser(t.Context(), "duplicateuser", "anotherhashedpassword")
 			assert.Error(t, err, "Should fail on duplicate username")
-			assert.ErrorIs(t, err, repository.ErrUserAlreadyExists, "if user exists must return well defined error")
+			assert.ErrorIs(t, err, domain.ErrUserAlreadyExists, "if user exists must return well defined error")
 		})
 	})
 
@@ -101,7 +101,7 @@ func Test_UserRepo(t *testing.T) {
 			_, err := r.GetUserByID(t.Context(), 99999)
 
 			assert.Error(t, err, "Should return error for non-existent user")
-			assert.ErrorIs(t, err, repository.ErrUserNotFound, "should return well known error")
+			assert.ErrorIs(t, err, domain.ErrUserNotFound, "should return well known error")
 		})
 	})
 
