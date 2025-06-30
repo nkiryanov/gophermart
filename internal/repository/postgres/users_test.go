@@ -1,4 +1,4 @@
-package repository
+package postgres
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 func Test_UserRepo(t *testing.T) {
@@ -53,46 +55,33 @@ func Test_UserRepo(t *testing.T) {
 
 	t.Run("create user ok", func(t *testing.T) {
 		withTx(dbpool, t, func(r *UserRepo) {
-			params := CreateUserParams{
-				Username:     "testuser",
-				PasswordHash: "hashedpassword123",
-			}
-
-			user, err := r.CreateUser(context.Background(), params)
+			user, err := r.CreateUser(context.Background(), "testuser", "hashedpassword123")
 
 			require.NoError(t, err)
 			assert.Greater(t, user.ID, int64(0), "ID should be generated")
-			assert.Equal(t, params.Username, user.Username)
-			assert.Equal(t, params.PasswordHash, user.PasswordHash)
+			assert.Equal(t, "testuser", user.Username)
+			assert.Equal(t, "hashedpassword123", user.PasswordHash)
 			assert.WithinDuration(t, time.Now(), user.CreatedAt, time.Second, "CreatedAt should be recent")
 		})
 	})
 
 	t.Run("create user duplicate username fails", func(t *testing.T) {
 		withTx(dbpool, t, func(r *UserRepo) {
-			params := CreateUserParams{
-				Username:     "duplicateuser",
-				PasswordHash: "hashedpassword123",
-			}
-
 			// Create first user
-			_, err := r.CreateUser(t.Context(), params)
+			_, err := r.CreateUser(t.Context(), "duplicateuser", "hashedpassword123")
 			require.NoError(t, err)
 
 			// Try to create second user with same username
-			_, err = r.CreateUser(t.Context(), params)
+			_, err = r.CreateUser(t.Context(), "duplicateuser", "anotherhashedpassword")
 			assert.Error(t, err, "Should fail on duplicate username")
+			assert.ErrorIs(t, err, repository.ErrUserAlreadyExists, "if user exists must return well defined error")
 		})
 	})
 
 	t.Run("get user by id ok", func(t *testing.T) {
 		withTx(dbpool, t, func(r *UserRepo) {
 			// Create user first
-			params := CreateUserParams{
-				Username:     "findbyid",
-				PasswordHash: "hashedpassword123",
-			}
-			created, err := r.CreateUser(t.Context(), params)
+			created, err := r.CreateUser(t.Context(), "findbyid", "hashedpassword123")
 			require.NoError(t, err)
 
 			// Get user by ID
@@ -112,17 +101,14 @@ func Test_UserRepo(t *testing.T) {
 			_, err := r.GetUserByID(t.Context(), 99999)
 
 			assert.Error(t, err, "Should return error for non-existent user")
+			assert.ErrorIs(t, err, repository.ErrUserNotFound, "should return well known error")
 		})
 	})
 
 	t.Run("get user by username ok", func(t *testing.T) {
 		withTx(dbpool, t, func(r *UserRepo) {
 			// Create user first
-			params := CreateUserParams{
-				Username:     "findbyusername",
-				PasswordHash: "hashedpassword123",
-			}
-			created, err := r.CreateUser(t.Context(), params)
+			created, err := r.CreateUser(t.Context(), "findbyusername", "hashedpassword123")
 			require.NoError(t, err)
 
 			// Get user by username
