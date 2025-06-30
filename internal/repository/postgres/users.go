@@ -1,10 +1,14 @@
-package repository
+package postgres
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 type UserRepo struct {
@@ -24,7 +28,16 @@ type CreateUserParams struct {
 
 func (r *UserRepo) CreateUser(ctx context.Context, arg CreateUserParams) (models.User, error) {
 	rows, _ := r.db.Query(ctx, createUser, arg.Username, arg.PasswordHash)
-	return pgx.CollectOneRow(rows, rowToUser)
+	user, err := pgx.CollectOneRow(rows, rowToUser)
+
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgerrcode.IsIntegrityConstraintViolation(pgErr.Code) {
+			return user, repository.ErrUserAlreadyExists
+		}
+	}
+
+	return user, err
 }
 
 const getUserByID = `-- name: getUserByID
@@ -34,7 +47,13 @@ WHERE id = $1
 
 func (r *UserRepo) GetUserByID(ctx context.Context, id int64) (models.User, error) {
 	rows, _ := r.db.Query(ctx, getUserByID, id)
-	return pgx.CollectOneRow(rows, rowToUser)
+	user, err := pgx.CollectOneRow(rows, rowToUser)
+
+	if err != nil && errors.Is(err, pgx.ErrNoRows) {
+		return user, repository.ErrUserNotFound
+	}
+
+	return user, err
 }
 
 const getUserByUsername = `-- name: getUserByUsername
@@ -44,7 +63,13 @@ WHERE username = $1
 
 func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (models.User, error) {
 	rows, _ := r.db.Query(ctx, getUserByUsername, username)
-	return pgx.CollectOneRow(rows, rowToUser)
+	user, err := pgx.CollectOneRow(rows, rowToUser)
+
+	if err != nil && errors.Is(err, pgx.ErrNoRows) {
+		return user, repository.ErrUserNotFound
+	}
+
+	return user, err
 }
 
 func rowToUser(row pgx.CollectableRow) (models.User, error) {

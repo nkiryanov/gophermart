@@ -14,4 +14,4 @@ lint:
 .PHONE: generate
 generate:
 	go generate ./...
-	sqlc generate --file="internal/repository/sqlc.yml"
+	sqlc generate --file="internal/repository/postgres/sqlc.yml"
