@@ -7,8 +7,8 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/nkiryanov/gophermart/internal/domain"
 	"github.com/nkiryanov/gophermart/internal/models"
-	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 type UserRepo struct {
@@ -28,7 +28,7 @@ func (r *UserRepo) CreateUser(ctx context.Context, username string, passwordHash
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgerrcode.IsIntegrityConstraintViolation(pgErr.Code) {
-			return user, repository.ErrUserAlreadyExists
+			return user, domain.ErrUserAlreadyExists
 		}
 	}
 
@@ -45,7 +45,7 @@ func (r *UserRepo) GetUserByID(ctx context.Context, id int64) (models.User, erro
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
 	if err != nil && errors.Is(err, pgx.ErrNoRows) {
-		return user, repository.ErrUserNotFound
+		return user, domain.ErrUserNotFound
 	}
 
 	return user, err
@@ -61,7 +61,7 @@ func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (mode
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
 	if err != nil && errors.Is(err, pgx.ErrNoRows) {
-		return user, repository.ErrUserNotFound
+		return user, domain.ErrUserNotFound
 	}
 
 	return user, err
