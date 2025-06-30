@@ -21,13 +21,8 @@ VALUES ($1, $2)
 RETURNING id, created_at, username, password_hash
 `
 
-type CreateUserParams struct {
-	Username     string
-	PasswordHash string
-}
-
-func (r *UserRepo) CreateUser(ctx context.Context, arg CreateUserParams) (models.User, error) {
-	rows, _ := r.db.Query(ctx, createUser, arg.Username, arg.PasswordHash)
+func (r *UserRepo) CreateUser(ctx context.Context, username string, passwordHash string) (models.User, error) {
+	rows, _ := r.db.Query(ctx, createUser, username, passwordHash)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
 	if err != nil {
