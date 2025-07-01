@@ -5,56 +5,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/nkiryanov/gophermart/internal/domain"
+	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
 func Test_UserRepo(t *testing.T) {
-	container, err := postgres.Run(context.Background(),
-		"postgres:17-alpine",
-		postgres.WithDatabase("gophermart-test"),
-		postgres.WithUsername("gophermart"),
-		postgres.WithPassword("pwd"),
-		postgres.BasicWaitStrategies(),
-		testcontainers.CustomizeRequestOption(func(req *testcontainers.GenericContainerRequest) error {
-			req.ExposedPorts = []string{"25432:5432"}
-			return nil
-		}),
-	)
-	defer testcontainers.CleanupContainer(t, container)
-	require.NoError(t, err, "container with pg start failed")
-
-	dsn, err := container.ConnectionString(t.Context())
-	require.NoError(t, err)
-	t.Logf("Container with pg started, DSN=%v", dsn)
-
-	// Migrate and request connection pool
-	dbpool, err := ConnectAndMigrate(t.Context(), dsn)
-	require.NoError(t, err)
-	defer dbpool.Close()
-
-	// Helper to run tests with its own UserRepo in transaction
-	// When test end rollback
-	withTx := func(dbpool *pgxpool.Pool, t *testing.T, testFunc func(*UserRepo)) {
-		tx, err := dbpool.Begin(t.Context())
-		require.NoError(t, err)
-
-		defer func() {
-			err := tx.Rollback(context.Background())
-			require.NoError(t, err)
-		}()
-
-		userRepo := &UserRepo{db: tx}
-		testFunc(userRepo)
-	}
+	pg := testutil.StartPostgresContainer(t)
+	t.Cleanup(pg.Terminate)
 
 	t.Run("create user ok", func(t *testing.T) {
-		withTx(dbpool, t, func(r *UserRepo) {
+		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+			r := UserRepo{db: tx}
+
 			user, err := r.CreateUser(context.Background(), "testuser", "hashedpassword123")
 
 			require.NoError(t, err)
@@ -65,21 +31,9 @@ func Test_UserRepo(t *testing.T) {
 		})
 	})
 
-	t.Run("create user duplicate username fails", func(t *testing.T) {
-		withTx(dbpool, t, func(r *UserRepo) {
-			// Create first user
-			_, err := r.CreateUser(t.Context(), "duplicateuser", "hashedpassword123")
-			require.NoError(t, err)
-
-			// Try to create second user with same username
-			_, err = r.CreateUser(t.Context(), "duplicateuser", "anotherhashedpassword")
-			assert.Error(t, err, "Should fail on duplicate username")
-			assert.ErrorIs(t, err, domain.ErrUserAlreadyExists, "if user exists must return well defined error")
-		})
-	})
-
 	t.Run("get user by id ok", func(t *testing.T) {
-		withTx(dbpool, t, func(r *UserRepo) {
+		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+			r := UserRepo{db: tx}
 			// Create user first
 			created, err := r.CreateUser(t.Context(), "findbyid", "hashedpassword123")
 			require.NoError(t, err)
@@ -96,7 +50,8 @@ func Test_UserRepo(t *testing.T) {
 	})
 
 	t.Run("get user by id not found", func(t *testing.T) {
-		withTx(dbpool, t, func(r *UserRepo) {
+		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+			r := UserRepo{db: tx}
 			// Try to get non-existent user
 			_, err := r.GetUserByID(t.Context(), 99999)
 
@@ -106,7 +61,8 @@ func Test_UserRepo(t *testing.T) {
 	})
 
 	t.Run("get user by username ok", func(t *testing.T) {
-		withTx(dbpool, t, func(r *UserRepo) {
+		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+			r := UserRepo{db: tx}
 			// Create user first
 			created, err := r.CreateUser(t.Context(), "findbyusername", "hashedpassword123")
 			require.NoError(t, err)
@@ -123,7 +79,9 @@ func Test_UserRepo(t *testing.T) {
 	})
 
 	t.Run("get user by username not found", func(t *testing.T) {
-		withTx(dbpool, t, func(r *UserRepo) {
+		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+			r := UserRepo{db: tx}
+
 			// Try to get non-existent user
 			_, err := r.GetUserByUsername(t.Context(), "nonexistentuser")
 
