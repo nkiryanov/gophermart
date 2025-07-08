@@ -14,7 +14,7 @@ import (
 )
 
 type UserRepo struct {
-	db DBTX
+	DB DBTX
 }
 
 const createUser = `-- name: CreateUser
@@ -24,7 +24,7 @@ RETURNING id, created_at, username, password_hash
 `
 
 func (r *UserRepo) CreateUser(ctx context.Context, username string, hashedPassword string) (models.User, error) {
-	rows, _ := r.db.Query(ctx, createUser, uuid.New(), username, hashedPassword)
+	rows, _ := r.DB.Query(ctx, createUser, uuid.New(), username, hashedPassword)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
 	if err != nil {
@@ -45,7 +45,7 @@ WHERE id = $1
 `
 
 func (r *UserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (models.User, error) {
-	rows, _ := r.db.Query(ctx, getUserByID, id)
+	rows, _ := r.DB.Query(ctx, getUserByID, id)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
 	switch {
@@ -64,7 +64,7 @@ WHERE username = $1
 `
 
 func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (models.User, error) {
-	rows, _ := r.db.Query(ctx, getUserByUsername, username)
+	rows, _ := r.DB.Query(ctx, getUserByUsername, username)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
 	switch {

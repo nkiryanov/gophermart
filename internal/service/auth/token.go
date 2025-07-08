@@ -40,6 +40,7 @@ func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (Token
 		jwt.GetSigningMethod(m.alg),
 		AccessTokenClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
+				ID:        uuid.NewString(),
 				IssuedAt:  jwt.NewNumericDate(createdAt),
 				ExpiresAt: jwt.NewNumericDate(createdAt.Add(m.accessTTL)),
 			},

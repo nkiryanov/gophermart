@@ -21,7 +21,7 @@ func Test_UserRepo(t *testing.T) {
 
 	t.Run("create user ok", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			r := UserRepo{db: tx}
+			r := UserRepo{DB: tx}
 
 			user, err := r.CreateUser(t.Context(), "testuser", "hashedpassword123")
 
@@ -34,7 +34,7 @@ func Test_UserRepo(t *testing.T) {
 
 	t.Run("get user by id ok", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			r := UserRepo{db: tx}
+			r := UserRepo{DB: tx}
 			// Create user first
 			created, err := r.CreateUser(t.Context(), "findbyid", "hashedpassword123")
 			require.NoError(t, err)
@@ -52,7 +52,7 @@ func Test_UserRepo(t *testing.T) {
 
 	t.Run("get user by id not found", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			r := UserRepo{db: tx}
+			r := UserRepo{DB: tx}
 			// Try to get non-existent user
 			_, err := r.GetUserByID(t.Context(), uuid.New())
 
@@ -63,7 +63,7 @@ func Test_UserRepo(t *testing.T) {
 
 	t.Run("get user by username ok", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			r := UserRepo{db: tx}
+			r := UserRepo{DB: tx}
 			// Create user first
 			created, err := r.CreateUser(t.Context(), "findbyusername", "hashedpassword123")
 			require.NoError(t, err)
@@ -81,7 +81,7 @@ func Test_UserRepo(t *testing.T) {
 
 	t.Run("get user by username not found", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			r := UserRepo{db: tx}
+			r := UserRepo{DB: tx}
 
 			// Try to get non-existent user
 			_, err := r.GetUserByUsername(t.Context(), "nonexistentuser")
