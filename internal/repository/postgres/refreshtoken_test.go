@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
-	"github.com/nkiryanov/gophermart/internal/domain"
+	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
@@ -27,7 +27,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
-	token := domain.RefreshToken{
+	token := models.RefreshToken{
 		Token:     "secret-token",
 		UserID:    uuid.New(),
 		CreatedAt: mustParseTime("2024-01-01 19:00:01Z"),

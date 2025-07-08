@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/nkiryanov/gophermart/internal/apperrors"
-	"github.com/nkiryanov/gophermart/internal/domain"
+	"github.com/nkiryanov/gophermart/internal/models"
 )
 
 type UserRepo struct {
@@ -23,7 +23,7 @@ VALUES ($1, $2, $3)
 RETURNING id, created_at, username, password_hash
 `
 
-func (r *UserRepo) CreateUser(ctx context.Context, username string, hashedPassword string) (domain.User, error) {
+func (r *UserRepo) CreateUser(ctx context.Context, username string, hashedPassword string) (models.User, error) {
 	rows, _ := r.db.Query(ctx, createUser, uuid.New(), username, hashedPassword)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
@@ -44,7 +44,7 @@ SELECT * FROM users
 WHERE id = $1
 `
 
-func (r *UserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (domain.User, error) {
+func (r *UserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (models.User, error) {
 	rows, _ := r.db.Query(ctx, getUserByID, id)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
@@ -63,7 +63,7 @@ SELECT * FROM users
 WHERE username = $1
 `
 
-func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (domain.User, error) {
+func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (models.User, error) {
 	rows, _ := r.db.Query(ctx, getUserByUsername, username)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
@@ -77,8 +77,8 @@ func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (doma
 	}
 }
 
-func rowToUser(row pgx.CollectableRow) (domain.User, error) {
-	var u domain.User
+func rowToUser(row pgx.CollectableRow) (models.User, error) {
+	var u models.User
 	err := row.Scan(&u.ID, &u.CreatedAt, &u.Username, &u.HashedPassword)
 	return u, err
 }
