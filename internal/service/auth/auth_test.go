@@ -1,30 +1,17 @@
 package auth
 
 import (
-	"errors"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nkiryanov/gophermart/internal/testutil"
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
+	"github.com/nkiryanov/gophermart/internal/testutil"
 )
-
-type dummyHasher struct {}
-func (h dummyHasher) Hash(password string) (string, error) {
-	return password, nil
-}
-func (h dummyHasher) Compare(knownGoodPassword string, userProvided string) (string error) {
-	if userProvided != knownGoodPassword {
-		return errors.New("wrong password")
-	}
-
-	return nil
-}
 
 func Test_Auth(t *testing.T) {
 	t.Parallel()
@@ -33,10 +20,10 @@ func Test_Auth(t *testing.T) {
 	t.Cleanup(pg.Terminate)
 
 	cfg := AuthServiceConfig{
-		SecretKey: "secret",
-		Hasher: dummyHasher{},
-		AccessTokenTTL: 5*time.Minute,
-		RefreshTokenTTL: 24*time.Hour,
+		SecretKey:       "secret",
+		Hasher:          BcryptHasher{},
+		AccessTokenTTL:  5 * time.Minute,
+		RefreshTokenTTL: 24 * time.Hour,
 	}
 
 	// Begin new db transaction and create new AuthService
@@ -66,6 +53,7 @@ func Test_Auth(t *testing.T) {
 			require.NoError(t, err, "no error has should happen if user not exists")
 
 			_, err = s.Register(t.Context(), "nkiryanov", "other-pwd")
+
 			require.Error(t, err)
 			require.ErrorIs(t, err, apperrors.ErrUserAlreadyExists)
 		})
@@ -77,6 +65,7 @@ func Test_Auth(t *testing.T) {
 			require.NoError(t, err)
 
 			pair, err := s.Login(t.Context(), "nkiryanov", "pwd")
+
 			require.NoError(t, err)
 			require.NotEmpty(t, pair.Access, "access token should not be empty")
 			require.NotEmpty(t, pair.Refresh, "refresh token should not be empty")
@@ -84,14 +73,24 @@ func Test_Auth(t *testing.T) {
 		})
 	})
 
-	tests := []struct{
-		name string
-		login string
-		password string
+	tests := []struct {
+		name        string
+		login       string
+		password    string
 		expectedErr error
 	}{
-		{"login fail if wrong password", "nkiryanov", "wrong", apperrors.ErrUserNotFound},
-		{"login fail if user not exists", "not-existed-user", "password", apperrors.ErrUserNotFound},
+		{
+			name:        "login fail if wrong password",
+			login:       "nkiryanov",
+			password:    "wrong",
+			expectedErr: apperrors.ErrUserNotFound,
+		},
+		{
+			name:        "login fail if user not exists",
+			login:       "not-existed-user",
+			password:    "password",
+			expectedErr: apperrors.ErrUserNotFound,
+		},
 	}
 
 	for _, tt := range tests {
@@ -108,4 +107,64 @@ func Test_Auth(t *testing.T) {
 
 		})
 	}
+
+	t.Run("refresh token ok", func(t *testing.T) {
+		withAuthTx(pg.Pool, t, func(s *AuthService) {
+			// Register user and get initial token pair
+			initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
+			require.NoError(t, err)
+			require.NotEmpty(t, initialPair.Refresh, "initial refresh token should not be empty")
+
+			// Use refresh token to get new token pair
+			newPair, err := s.Refresh(t.Context(), initialPair.Refresh)
+
+			require.NoError(t, err)
+			require.NotEmpty(t, newPair.Access, "new access token should not be empty")
+			require.NotEmpty(t, newPair.Refresh, "new refresh token should not be empty")
+			require.NotEqual(t, initialPair.Access, newPair.Access, "new access token should be different")
+			require.NotEqual(t, initialPair.Refresh, newPair.Refresh, "new refresh token should be different")
+		})
+	})
+
+	t.Run("refresh token fail if token already used", func(t *testing.T) {
+		withAuthTx(pg.Pool, t, func(s *AuthService) {
+			// Register user and get token pair
+			initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
+			require.NoError(t, err)
+
+			// Use refresh token once - should work
+			_, err = s.Refresh(t.Context(), initialPair.Refresh)
+			require.NoError(t, err)
+
+			// Try to use same refresh token again - should fail
+			_, err = s.Refresh(t.Context(), initialPair.Refresh)
+			require.Error(t, err)
+			require.ErrorIs(t, err, apperrors.ErrRefreshTokenIsUsed, "should return error if token already used")
+		})
+	})
+
+	t.Run("refresh token fail if token expired", func(t *testing.T) {
+		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+			cfg := AuthServiceConfig{
+				SecretKey:       "secret",
+				Hasher:          BcryptHasher{},
+				AccessTokenTTL:  50 * time.Millisecond,
+				RefreshTokenTTL: 100 * time.Millisecond, // Set refresh token expiration time very low
+			}
+
+			s, err := NewAuthService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
+			require.NoError(t, err, "auth service could't be started", err)
+
+			// Register user and get token pair
+			initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
+			require.NoError(t, err)
+
+			// Move time forward to make sure refresh token is expired
+			time.Sleep(100 * time.Millisecond)
+
+			_, err = s.Refresh(t.Context(), initialPair.Refresh)
+			require.Error(t, err)
+			require.ErrorIs(t, err, apperrors.ErrRefreshTokenExpired, "should return error if token expired")
+		})
+	})
 }

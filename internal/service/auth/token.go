@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -33,9 +34,9 @@ type TokenManager struct {
 }
 
 func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (TokenPair, error) {
-	var pair TokenPair
 	createdAt := time.Now()
 
+	// Generate JWT access token decoded as string
 	accessToken := jwt.NewWithClaims(
 		jwt.GetSigningMethod(m.alg),
 		AccessTokenClaims{
@@ -47,16 +48,18 @@ func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (Token
 			UserID: user.ID,
 		},
 	)
-
 	access, err := accessToken.SignedString([]byte(m.key))
 	if err != nil {
-		return pair, err
+		return TokenPair{}, fmt.Errorf("error while signing access token. Err: %w", err)
 	}
 
-	refresh, err := m.GenerateRandomString(16)
+	// Generate random refresh token 16 bytes length
+	b := make([]byte, 16)
+	_, err = rand.Read(b)
 	if err != nil {
-		return pair, err
+		return TokenPair{}, fmt.Errorf("error while generate refresh token. Err: %w", err)
 	}
+	refresh := hex.EncodeToString(b)
 
 	_, err = m.refreshRepo.Create(ctx, models.RefreshToken{
 		Token:     refresh,
@@ -65,18 +68,26 @@ func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (Token
 		ExpiresAt: createdAt.Add(m.refreshTTL),
 	})
 	if err != nil {
-		return pair, err
+		return TokenPair{}, fmt.Errorf("error while saving refresh token. Err: %w", err)
 	}
 
-	pair.Access = access
-	pair.Refresh = refresh
-	return pair, nil
+	return TokenPair{
+		Access:  access,
+		Refresh: refresh,
+	}, nil
 }
 
-func (m TokenManager) GenerateRandomString(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
+// Use token: return if it valid and mark as used
+func (m TokenManager) UseToken(ctx context.Context, refresh string) (models.RefreshToken, error) {
+	token, err := m.refreshRepo.GetValidToken(ctx, refresh, time.Now())
+	if err != nil {
+		return token, fmt.Errorf("no valid refresh token. Err: %w", err)
 	}
-	return hex.EncodeToString(b), nil
+
+	_, err = m.refreshRepo.MarkUsed(ctx, refresh)
+	if err != nil {
+		return token, fmt.Errorf("error while marking token used. Err: %w", err)
+	}
+
+	return token, nil
 }

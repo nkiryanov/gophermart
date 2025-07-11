@@ -33,7 +33,7 @@ type RefreshTokenRepo interface {
 	GetToken(ctx context.Context, tokenString string) (models.RefreshToken, error)
 
 	// Return a valid token only
-	// If the token is expired, must return error apperrors.ErrRefreshTokenNotFound
+	// If the token is expired, must return error apperrors.ErrRefreshTokenExpired
 	// If the token is used, must return error apperrors.ErrRefreshTokenIsUsed
 	GetValidToken(ctx context.Context, tokenString string, expiredAfter time.Time) (models.RefreshToken, error)
 

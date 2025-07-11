@@ -3,8 +3,8 @@ package testutil
 import (
 	"fmt"
 	"net"
-	"testing"
 	"os/exec"
+	"testing"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

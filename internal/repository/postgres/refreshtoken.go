@@ -63,12 +63,12 @@ func (r *RefreshTokenRepo) GetToken(ctx context.Context, tokenString string) (mo
 const getNotExpiredToken = `-- name: Get Token by token string itself
 SELECT user_id, created_at, expires_at, used_at
 FROM refresh_tokens
-WHERE token = $1 AND expires_at > $2`
+WHERE token = $1`
 
 // Get valid token by token string and expired time
 // The token obviously valid if it exists, not expired and not used
 func (r *RefreshTokenRepo) GetValidToken(ctx context.Context, tokenString string, expiredAfter time.Time) (models.RefreshToken, error) {
-	rows, _ := r.DB.Query(ctx, getNotExpiredToken, tokenString, expiredAfter)
+	rows, _ := r.DB.Query(ctx, getNotExpiredToken, tokenString)
 	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
 		var t = models.RefreshToken{Token: tokenString}
 		var usedAt pgtype.Timestamptz
@@ -81,10 +81,14 @@ func (r *RefreshTokenRepo) GetValidToken(ctx context.Context, tokenString string
 
 	switch {
 	case err == nil:
-		if token.UsedAt.IsZero() {
+		switch {
+		case !token.UsedAt.IsZero():
+			return token, apperrors.ErrRefreshTokenIsUsed
+		case token.ExpiresAt.Before(expiredAfter):
+			return token, apperrors.ErrRefreshTokenExpired
+		default:
 			return token, nil
 		}
-		return token, apperrors.ErrRefreshTokenIsUsed
 	case errors.Is(err, pgx.ErrNoRows):
 		return token, apperrors.ErrRefreshTokenNotFound
 	default:
