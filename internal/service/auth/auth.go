@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nkiryanov/gophermart/internal/repository"
+	"github.com/nkiryanov/gophermart/internal/apperrors"
 )
 
 // Interface to create or compare user password hashes
@@ -15,6 +16,7 @@ type PasswordHasher interface {
 	Hash(password string) (string, error)
 
 	// Compare known hashedPassword and user provided password
+	// Must be protected against timing attacks
 	Compare(hashedPassword string, password string) error
 }
 
@@ -75,26 +77,44 @@ func NewAuthService(cfg AuthServiceConfig, userRepo repository.UserRepo, refresh
 }
 
 func (s *AuthService) Register(ctx context.Context, username string, password string) (TokenPair, error) {
-	var pair TokenPair
-
 	hash, err := s.hasher.Hash(password)
 	if err != nil {
-		return pair, fmt.Errorf("can't use this as password, error=%w", err)
+		return TokenPair{}, fmt.Errorf("can't use this as password, error=%w", err)
 	}
 
 	user, err := s.userRepo.CreateUser(ctx, username, hash)
 	if err != nil {
-		return pair, err
+		return TokenPair{}, err
 	}
 
-	pair, err = s.token.GeneratePair(ctx, user)
+	pair, err := s.token.GeneratePair(ctx, user)
 	if err != nil {
-		return pair, fmt.Errorf("token could not generated, sorry. %w", err)
+		return TokenPair{}, fmt.Errorf("token could not generated, sorry. %w", err)
 	}
 
 	return pair, nil
 }
 
 func (s *AuthService) Login(ctx context.Context, username string, password string) (TokenPair, error) {
-	return TokenPair{}, nil
+	hash, err := s.hasher.Hash(password)
+	if err != nil {
+		return TokenPair{}, fmt.Errorf("can't use this as password, error=%w", err)
+	}
+
+	// Ignore error for now, but prefer to log it
+	// It's safe to user user now, cuase it always not empty
+	user, _ := s.userRepo.GetUserByUsername(ctx, username)
+
+	// Compare password 
+	err = s.hasher.Compare(hash, user.HashedPassword)
+	if err != nil {
+		return TokenPair{}, apperrors.ErrUserNotFound
+	}
+
+	pair, err := s.token.GeneratePair(ctx, user)
+	if err != nil {
+		return TokenPair{}, fmt.Errorf("token could not generated, sorry. %w", err)
+	}
+
+	return pair, nil
 }
