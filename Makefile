@@ -9,6 +9,7 @@ fmt:
 
 .PHONY: lint
 lint:
+	gofmt -l .
 	golangci-lint run ./...
 
 .PHONE: generate
