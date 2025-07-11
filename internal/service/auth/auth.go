@@ -115,7 +115,6 @@ func (s *AuthService) Login(ctx context.Context, username string, password strin
 	return pair, nil
 }
 
-
 func (s *AuthService) Refresh(ctx context.Context, refresh string) (TokenPair, error) {
 	// Mark token as used
 	// Always fail if token is not valid or not found
