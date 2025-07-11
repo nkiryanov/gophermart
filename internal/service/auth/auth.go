@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nkiryanov/gophermart/internal/repository"
 	"github.com/nkiryanov/gophermart/internal/apperrors"
+	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 // Interface to create or compare user password hashes
@@ -96,19 +96,38 @@ func (s *AuthService) Register(ctx context.Context, username string, password st
 }
 
 func (s *AuthService) Login(ctx context.Context, username string, password string) (TokenPair, error) {
-	hash, err := s.hasher.Hash(password)
-	if err != nil {
-		return TokenPair{}, fmt.Errorf("can't use this as password, error=%w", err)
-	}
-
 	// Ignore error for now, but prefer to log it
-	// It's safe to user user now, cuase it always not empty
+	// It's safe to use user now, because it's always not empty
 	user, _ := s.userRepo.GetUserByUsername(ctx, username)
 
-	// Compare password 
-	err = s.hasher.Compare(hash, user.HashedPassword)
+	// Always compare password to prevent timing attacks
+	// It will always fail if user not found
+	err := s.hasher.Compare(user.HashedPassword, password)
 	if err != nil {
 		return TokenPair{}, apperrors.ErrUserNotFound
+	}
+
+	pair, err := s.token.GeneratePair(ctx, user)
+	if err != nil {
+		return TokenPair{}, fmt.Errorf("token could not be generated, sorry. %w", err)
+	}
+
+	return pair, nil
+}
+
+
+func (s *AuthService) Refresh(ctx context.Context, refresh string) (TokenPair, error) {
+	// Mark token as used
+	// Always fail if token is not valid or not found
+	token, err := s.token.UseToken(ctx, refresh)
+	if err != nil {
+		return TokenPair{}, fmt.Errorf("token could not be refreshed. Err: %w", err)
+	}
+
+	// Check whether user is still exists
+	user, err := s.userRepo.GetUserByID(ctx, token.UserID)
+	if err != nil {
+		return TokenPair{}, fmt.Errorf("token could not be refreshed. Err: %w", err)
 	}
 
 	pair, err := s.token.GeneratePair(ctx, user)
