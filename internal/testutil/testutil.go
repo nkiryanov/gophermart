@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"testing"
+	"os/exec"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,6 +38,14 @@ type PostgresContainer struct {
 func StartPostgresContainer(t *testing.T) PostgresContainer {
 	t.Helper()
 
+	// Fail if docker rootless not found
+	cmd := exec.Command("docker", "info", "--format", "{{.ServerVersion}}")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("test failed: docker rootless not available or not running. Err:%s", out)
+	}
+
+	// Run postgres in docker on random port
 	port, err := RandomPort()
 	require.NoError(t, err, "Error happened when acquiring random port to start postgres")
 
