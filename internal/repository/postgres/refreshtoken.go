@@ -9,11 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nkiryanov/gophermart/internal/apperrors"
-	"github.com/nkiryanov/gophermart/internal/domain"
+	"github.com/nkiryanov/gophermart/internal/models"
 )
 
 type RefreshTokenRepo struct {
-	db DBTX
+	DB DBTX
 }
 
 const createToken = `-- name: Store Refresh Token
@@ -21,8 +21,8 @@ INSERT INTO refresh_tokens (token, user_id, created_at, expires_at)
 VALUES ($1, $2, $3, $4)
 RETURNING id`
 
-func (r *RefreshTokenRepo) Create(ctx context.Context, token domain.RefreshToken) (tokenID int64, err error) {
-	rows, _ := r.db.Query(ctx, createToken, token.Token, token.UserID, token.CreatedAt, token.ExpiresAt)
+func (r *RefreshTokenRepo) Create(ctx context.Context, token models.RefreshToken) (tokenID int64, err error) {
+	rows, _ := r.DB.Query(ctx, createToken, token.Token, token.UserID, token.CreatedAt, token.ExpiresAt)
 	tokenID, err = pgx.CollectOneRow(rows, pgx.RowTo[int64])
 	if err != nil {
 		return 0, fmt.Errorf("db error: %w", err)
@@ -38,10 +38,10 @@ WHERE token = $1
 
 // Get token
 // It should return result even it expired or used already
-func (r *RefreshTokenRepo) GetToken(ctx context.Context, tokenString string) (domain.RefreshToken, error) {
-	rows, _ := r.db.Query(ctx, getToken, tokenString)
-	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (domain.RefreshToken, error) {
-		var t = domain.RefreshToken{Token: tokenString}
+func (r *RefreshTokenRepo) GetToken(ctx context.Context, tokenString string) (models.RefreshToken, error) {
+	rows, _ := r.DB.Query(ctx, getToken, tokenString)
+	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
+		var t = models.RefreshToken{Token: tokenString}
 		var usedAt pgtype.Timestamptz
 		err := row.Scan(&t.UserID, &t.CreatedAt, &t.ExpiresAt, &usedAt)
 		if err == nil && usedAt.Valid {
@@ -67,10 +67,10 @@ WHERE token = $1 AND expires_at > $2`
 
 // Get valid token by token string and expired time
 // The token obviously valid if it exists, not expired and not used
-func (r *RefreshTokenRepo) GetValidToken(ctx context.Context, tokenString string, expiredAfter time.Time) (domain.RefreshToken, error) {
-	rows, _ := r.db.Query(ctx, getNotExpiredToken, tokenString, expiredAfter)
-	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (domain.RefreshToken, error) {
-		var t = domain.RefreshToken{Token: tokenString}
+func (r *RefreshTokenRepo) GetValidToken(ctx context.Context, tokenString string, expiredAfter time.Time) (models.RefreshToken, error) {
+	rows, _ := r.DB.Query(ctx, getNotExpiredToken, tokenString, expiredAfter)
+	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
+		var t = models.RefreshToken{Token: tokenString}
 		var usedAt pgtype.Timestamptz
 		err := row.Scan(&t.UserID, &t.CreatedAt, &t.ExpiresAt, &usedAt)
 		if err == nil && usedAt.Valid {
@@ -102,7 +102,7 @@ RETURNING used_at
 // Mark token as used
 // Should not rewrite already used tokens
 func (r *RefreshTokenRepo) MarkUsed(ctx context.Context, tokenString string) (time.Time, error) {
-	rows, _ := r.db.Query(ctx, markTokenUsed, tokenString)
+	rows, _ := r.DB.Query(ctx, markTokenUsed, tokenString)
 	usedAt, err := pgx.CollectOneRow(rows, pgx.RowTo[time.Time])
 
 	switch {

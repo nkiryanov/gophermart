@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
-	"github.com/nkiryanov/gophermart/internal/domain"
+	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
@@ -27,7 +27,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
-	token := domain.RefreshToken{
+	token := models.RefreshToken{
 		Token:     "secret-token",
 		UserID:    uuid.New(),
 		CreatedAt: mustParseTime("2024-01-01 19:00:01Z"),
@@ -36,7 +36,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 
 	t.Run("create token ok", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			repo := RefreshTokenRepo{db: tx}
+			repo := RefreshTokenRepo{DB: tx}
 
 			tokenID, err := repo.Create(t.Context(), token)
 
@@ -47,20 +47,24 @@ func Test_RefreshTokenRepo(t *testing.T) {
 
 	t.Run("get token ok", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			repo := RefreshTokenRepo{db: tx}
+			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Create(t.Context(), token)
 			require.NoError(t, err)
 
 			got, err := repo.GetToken(t.Context(), token.Token)
 
 			require.NoError(t, err)
-			assert.Equal(t, token, got)
+			require.Equal(t, token.Token, got.Token)
+			require.Equal(t, token.UserID, got.UserID)
+			require.WithinDuration(t, token.CreatedAt, got.CreatedAt, 0)
+			require.WithinDuration(t, token.ExpiresAt, got.ExpiresAt, 0)
+			require.WithinDuration(t, token.UsedAt, got.UsedAt, 0)
 		})
 	})
 
 	t.Run("mark token used", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			repo := RefreshTokenRepo{db: tx}
+			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Create(t.Context(), token)
 			require.NoError(t, err)
 
@@ -73,7 +77,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 
 	t.Run("mark used not existed token", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			repo := RefreshTokenRepo{db: tx}
+			repo := RefreshTokenRepo{DB: tx}
 
 			_, err := repo.MarkUsed(t.Context(), token.Token)
 
@@ -84,7 +88,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 
 	t.Run("mark used already used token", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			repo := RefreshTokenRepo{db: tx}
+			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Create(t.Context(), token)
 			require.NoError(t, err)
 
@@ -101,7 +105,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 
 	t.Run("get valid token ok", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			repo := RefreshTokenRepo{db: tx}
+			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Create(t.Context(), token)
 			require.NoError(t, err)
 
@@ -109,13 +113,17 @@ func Test_RefreshTokenRepo(t *testing.T) {
 			got, err := repo.GetValidToken(t.Context(), token.Token, time.Time{})
 
 			require.NoError(t, err)
-			assert.Equal(t, token, got)
+			require.Equal(t, token.Token, got.Token)
+			require.Equal(t, token.UserID, got.UserID)
+			require.WithinDuration(t, token.CreatedAt, got.CreatedAt, 0)
+			require.WithinDuration(t, token.ExpiresAt, got.ExpiresAt, 0)
+			require.WithinDuration(t, token.UsedAt, got.UsedAt, 0)
 		})
 	})
 
 	t.Run("fail get valid token if expired", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			repo := RefreshTokenRepo{db: tx}
+			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Create(t.Context(), token)
 			require.NoError(t, err)
 
@@ -128,7 +136,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 
 	t.Run("fail get valid token if used", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			repo := RefreshTokenRepo{db: tx}
+			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Create(t.Context(), token)
 			require.NoError(t, err)
 
