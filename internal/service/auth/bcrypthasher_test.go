@@ -6,10 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func Test_BcryptHasher(t *testing.T) {
 	t.Parallel()
-	
+
 	h := BcryptHasher{}
 
 	t.Run("hash password", func(t *testing.T) {
@@ -25,7 +24,7 @@ func Test_BcryptHasher(t *testing.T) {
 		require.NoError(t, err)
 
 		err = h.Compare(hash, "password")
-		
+
 		require.NoError(t, err)
 	})
 
@@ -34,7 +33,15 @@ func Test_BcryptHasher(t *testing.T) {
 		require.NoError(t, err)
 
 		err = h.Compare(hash, "wrong")
-		
+
+		require.Error(t, err)
+	})
+
+	t.Run("fail if hash and password empty", func(t *testing.T) {
+		// It possible happen if user not found and want to run compare
+		// to protect timing attack
+		err := h.Compare("", "")
+
 		require.Error(t, err)
 	})
 }

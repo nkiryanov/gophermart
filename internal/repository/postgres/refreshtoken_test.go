@@ -127,10 +127,11 @@ func Test_RefreshTokenRepo(t *testing.T) {
 			_, err := repo.Create(t.Context(), token)
 			require.NoError(t, err)
 
-			_, err = repo.GetValidToken(t.Context(), token.Token, mustParseTime("2200-01-01 03:00:02Z"))
+			// Try to get valid token 1 second after it expire time
+			_, err = repo.GetValidToken(t.Context(), token.Token, mustParseTime("2200-01-01 03:00:03Z"))
 
 			require.Error(t, err, "when token expired must return error")
-			require.ErrorIs(t, err, apperrors.ErrRefreshTokenNotFound)
+			require.ErrorIs(t, err, apperrors.ErrRefreshTokenExpired)
 		})
 	})
 
