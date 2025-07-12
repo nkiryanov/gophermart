@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/repository"
 )
@@ -33,8 +34,11 @@ type TokenManager struct {
 	refreshRepo repository.RefreshTokenRepo
 }
 
-func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (TokenPair, error) {
-	createdAt := time.Now()
+func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (models.TokenPair, error) {
+	var pair models.TokenPair
+	now := time.Now().Truncate(time.Second)
+	accessExpiresAt := now.Add(m.accessTTL)
+	refreshExpiresAt := now.Add(m.refreshTTL)
 
 	// Generate JWT access token decoded as string
 	accessToken := jwt.NewWithClaims(
@@ -42,51 +46,52 @@ func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (Token
 		AccessTokenClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				ID:        uuid.NewString(),
-				IssuedAt:  jwt.NewNumericDate(createdAt),
-				ExpiresAt: jwt.NewNumericDate(createdAt.Add(m.accessTTL)),
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(accessExpiresAt),
 			},
 			UserID: user.ID,
 		},
 	)
 	access, err := accessToken.SignedString([]byte(m.key))
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("error while signing access token. Err: %w", err)
+		return pair, fmt.Errorf("error while signing access token. Err: %w", err)
 	}
 
 	// Generate random refresh token 16 bytes length
 	b := make([]byte, 16)
 	_, err = rand.Read(b)
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("error while generate refresh token. Err: %w", err)
+		return pair, fmt.Errorf("error while generate refresh token. Err: %w", err)
 	}
 	refresh := hex.EncodeToString(b)
 
-	_, err = m.refreshRepo.Create(ctx, models.RefreshToken{
-		Token:     refresh,
+	_, err = m.refreshRepo.Save(ctx, models.RefreshToken{
+		ID:        uuid.New(),
 		UserID:    user.ID,
-		CreatedAt: createdAt,
-		ExpiresAt: createdAt.Add(m.refreshTTL),
+		Token:     refresh,
+		CreatedAt: now,
+		ExpiresAt: refreshExpiresAt,
+		UsedAt:    nil,
 	})
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("error while saving refresh token. Err: %w", err)
+		return pair, fmt.Errorf("error while saving refresh token. Err: %w", err)
 	}
 
-	return TokenPair{
-		Access:  access,
-		Refresh: refresh,
+	return models.TokenPair{
+		Access:  models.IssuedToken{Value: access, ExpiresAt: accessExpiresAt},
+		Refresh: models.IssuedToken{Value: refresh, ExpiresAt: refreshExpiresAt},
 	}, nil
 }
 
 // Use token: return if it valid and mark as used
-func (m TokenManager) UseToken(ctx context.Context, refresh string) (models.RefreshToken, error) {
-	token, err := m.refreshRepo.GetValidToken(ctx, refresh, time.Now())
-	if err != nil {
-		return token, fmt.Errorf("no valid refresh token. Err: %w", err)
-	}
-
-	_, err = m.refreshRepo.MarkUsed(ctx, refresh)
+func (m TokenManager) UseRefreshToken(ctx context.Context, refresh string) (models.RefreshToken, error) {
+	token, err := m.refreshRepo.GetAndMarkUsed(ctx, refresh)
 	if err != nil {
 		return token, fmt.Errorf("error while marking token used. Err: %w", err)
+	}
+
+	if token.ExpiresAt.Before(time.Now()) {
+		return token, fmt.Errorf("error while marking token used. Err: %w", apperrors.ErrRefreshTokenExpired)
 	}
 
 	return token, nil

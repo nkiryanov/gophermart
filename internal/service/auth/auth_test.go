@@ -42,8 +42,8 @@ func Test_Auth(t *testing.T) {
 			pair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 
 			require.NoError(t, err, "registering new user should be ok")
-			require.NotEmpty(t, pair.Access, "access token should not be empty")
-			require.NotEmpty(t, pair.Refresh, "refresh token should not be empty")
+			require.NotEmpty(t, pair.Access.Value, "access token should not be empty")
+			require.NotEmpty(t, pair.Refresh.Value, "refresh token should not be empty")
 		})
 	})
 
@@ -67,8 +67,8 @@ func Test_Auth(t *testing.T) {
 			pair, err := s.Login(t.Context(), "nkiryanov", "pwd")
 
 			require.NoError(t, err)
-			require.NotEmpty(t, pair.Access, "access token should not be empty")
-			require.NotEmpty(t, pair.Refresh, "refresh token should not be empty")
+			require.NotEmpty(t, pair.Access.Value, "access token should not be empty")
+			require.NotEmpty(t, pair.Refresh.Value, "refresh token should not be empty")
 
 		})
 	})
@@ -113,16 +113,13 @@ func Test_Auth(t *testing.T) {
 			// Register user and get initial token pair
 			initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 			require.NoError(t, err)
-			require.NotEmpty(t, initialPair.Refresh, "initial refresh token should not be empty")
 
 			// Use refresh token to get new token pair
-			newPair, err := s.Refresh(t.Context(), initialPair.Refresh)
+			newPair, err := s.Refresh(t.Context(), initialPair.Refresh.Value)
 
 			require.NoError(t, err)
-			require.NotEmpty(t, newPair.Access, "new access token should not be empty")
-			require.NotEmpty(t, newPair.Refresh, "new refresh token should not be empty")
-			require.NotEqual(t, initialPair.Access, newPair.Access, "new access token should be different")
-			require.NotEqual(t, initialPair.Refresh, newPair.Refresh, "new refresh token should be different")
+			require.NotEqual(t, initialPair.Access.Value, newPair.Access.Value, "new access token should be different")
+			require.NotEqual(t, initialPair.Refresh.Value, newPair.Refresh.Value, "new refresh token should be different")
 		})
 	})
 
@@ -133,11 +130,11 @@ func Test_Auth(t *testing.T) {
 			require.NoError(t, err)
 
 			// Use refresh token once - should work
-			_, err = s.Refresh(t.Context(), initialPair.Refresh)
+			_, err = s.Refresh(t.Context(), initialPair.Refresh.Value)
 			require.NoError(t, err)
 
 			// Try to use same refresh token again - should fail
-			_, err = s.Refresh(t.Context(), initialPair.Refresh)
+			_, err = s.Refresh(t.Context(), initialPair.Refresh.Value)
 			require.Error(t, err)
 			require.ErrorIs(t, err, apperrors.ErrRefreshTokenIsUsed, "should return error if token already used")
 		})
@@ -162,7 +159,7 @@ func Test_Auth(t *testing.T) {
 			// Move time forward to make sure refresh token is expired
 			time.Sleep(100 * time.Millisecond)
 
-			_, err = s.Refresh(t.Context(), initialPair.Refresh)
+			_, err = s.Refresh(t.Context(), initialPair.Refresh.Value)
 			require.Error(t, err)
 			require.ErrorIs(t, err, apperrors.ErrRefreshTokenExpired, "should return error if token expired")
 		})

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
+	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
@@ -30,12 +31,6 @@ type AuthServiceConfig struct {
 	// Access and refresh token lifetimes
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
-}
-
-// Token pair of tokens that should be returned to the user on authentication
-type TokenPair struct {
-	Access  string
-	Refresh string
 }
 
 // Auth service
@@ -76,26 +71,30 @@ func NewAuthService(cfg AuthServiceConfig, userRepo repository.UserRepo, refresh
 	}, nil
 }
 
-func (s *AuthService) Register(ctx context.Context, username string, password string) (TokenPair, error) {
+func (s *AuthService) Register(ctx context.Context, username string, password string) (models.TokenPair, error) {
+	var pair models.TokenPair
+
 	hash, err := s.hasher.Hash(password)
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("can't use this as password, error=%w", err)
+		return pair, fmt.Errorf("can't use this as password, error=%w", err)
 	}
 
 	user, err := s.userRepo.CreateUser(ctx, username, hash)
 	if err != nil {
-		return TokenPair{}, err
+		return pair, err
 	}
 
-	pair, err := s.token.GeneratePair(ctx, user)
+	pair, err = s.token.GeneratePair(ctx, user)
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("token could not generated, sorry. %w", err)
+		return pair, fmt.Errorf("token could not generated, sorry. %w", err)
 	}
 
 	return pair, nil
 }
 
-func (s *AuthService) Login(ctx context.Context, username string, password string) (TokenPair, error) {
+func (s *AuthService) Login(ctx context.Context, username string, password string) (models.TokenPair, error) {
+	var pair models.TokenPair
+
 	// Ignore error for now, but prefer to log it
 	// It's safe to use user now, because it's always not empty
 	user, _ := s.userRepo.GetUserByUsername(ctx, username)
@@ -104,34 +103,36 @@ func (s *AuthService) Login(ctx context.Context, username string, password strin
 	// It will always fail if user not found
 	err := s.hasher.Compare(user.HashedPassword, password)
 	if err != nil {
-		return TokenPair{}, apperrors.ErrUserNotFound
+		return pair, apperrors.ErrUserNotFound
 	}
 
-	pair, err := s.token.GeneratePair(ctx, user)
+	pair, err = s.token.GeneratePair(ctx, user)
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("token could not be generated, sorry. %w", err)
+		return pair, fmt.Errorf("token could not be generated, sorry. %w", err)
 	}
 
 	return pair, nil
 }
 
-func (s *AuthService) Refresh(ctx context.Context, refresh string) (TokenPair, error) {
+func (s *AuthService) Refresh(ctx context.Context, refresh string) (models.TokenPair, error) {
+	var pair models.TokenPair
+
 	// Mark token as used
 	// Always fail if token is not valid or not found
-	token, err := s.token.UseToken(ctx, refresh)
+	token, err := s.token.UseRefreshToken(ctx, refresh)
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("token could not be refreshed. Err: %w", err)
+		return pair, fmt.Errorf("token could not be refreshed. Err: %w", err)
 	}
 
 	// Check whether user is still exists
 	user, err := s.userRepo.GetUserByID(ctx, token.UserID)
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("token could not be refreshed. Err: %w", err)
+		return pair, fmt.Errorf("token could not be refreshed. Err: %w", err)
 	}
 
-	pair, err := s.token.GeneratePair(ctx, user)
+	pair, err = s.token.GeneratePair(ctx, user)
 	if err != nil {
-		return TokenPair{}, fmt.Errorf("token could not generated, sorry. %w", err)
+		return pair, fmt.Errorf("token could not generated, sorry. %w", err)
 	}
 
 	return pair, nil

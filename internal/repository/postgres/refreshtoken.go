@@ -16,37 +16,52 @@ type RefreshTokenRepo struct {
 	DB DBTX
 }
 
-const createToken = `-- name: Store Refresh Token
-INSERT INTO refresh_tokens (token, user_id, created_at, expires_at)
-VALUES ($1, $2, $3, $4)
-RETURNING id`
+const saveToken = `-- name: Save Refresh Token
+INSERT INTO refresh_tokens (id, user_id, token, created_at, expires_at, used_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, user_id, token, created_at, expires_at, used_at`
 
-func (r *RefreshTokenRepo) Create(ctx context.Context, token models.RefreshToken) (tokenID int64, err error) {
-	rows, _ := r.DB.Query(ctx, createToken, token.Token, token.UserID, token.CreatedAt, token.ExpiresAt)
-	tokenID, err = pgx.CollectOneRow(rows, pgx.RowTo[int64])
-	if err != nil {
-		return 0, fmt.Errorf("db error: %w", err)
+func (r *RefreshTokenRepo) Save(ctx context.Context, token models.RefreshToken) (models.RefreshToken, error) {
+	var usedAt pgtype.Timestamptz
+
+	if token.UsedAt != nil {
+		usedAt.Valid = true
+		usedAt.Time = token.UsedAt.Truncate(time.Microsecond)
 	}
-	return tokenID, nil
+
+	rows, _ := r.DB.Query(ctx,
+		saveToken,
+		token.ID,
+		token.UserID,
+		token.Token,
+		token.CreatedAt.Truncate(time.Microsecond),
+		token.ExpiresAt.Truncate(time.Microsecond),
+		usedAt,
+	)
+	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
+		var t models.RefreshToken
+		err := row.Scan(&t.ID, &t.UserID, &t.Token, &t.CreatedAt, &t.ExpiresAt, &t.UsedAt)
+		return t, err
+	})
+	if err != nil {
+		return token, fmt.Errorf("db error: %w", err)
+	}
+	return token, nil
 }
 
 const getToken = `-- name: GetToken by string itself
-SELECT user_id, created_at, expires_at, used_at
+SELECT id, user_id, created_at, expires_at, used_at
 FROM refresh_tokens
 WHERE token = $1
 `
 
 // Get token
 // It should return result even it expired or used already
-func (r *RefreshTokenRepo) GetToken(ctx context.Context, tokenString string) (models.RefreshToken, error) {
+func (r *RefreshTokenRepo) Get(ctx context.Context, tokenString string) (models.RefreshToken, error) {
 	rows, _ := r.DB.Query(ctx, getToken, tokenString)
 	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
 		var t = models.RefreshToken{Token: tokenString}
-		var usedAt pgtype.Timestamptz
-		err := row.Scan(&t.UserID, &t.CreatedAt, &t.ExpiresAt, &usedAt)
-		if err == nil && usedAt.Valid {
-			t.UsedAt = usedAt.Time
-		}
+		err := row.Scan(&t.ID, &t.UserID, &t.CreatedAt, &t.ExpiresAt, &t.UsedAt)
 		return t, err
 	})
 
@@ -54,67 +69,40 @@ func (r *RefreshTokenRepo) GetToken(ctx context.Context, tokenString string) (mo
 	case err == nil:
 		return token, nil
 	case errors.Is(err, pgx.ErrNoRows):
-		return token, apperrors.ErrRefreshTokenNotFound
+		return token, fmt.Errorf("repo error: %w", apperrors.ErrRefreshTokenNotFound)
 	default:
 		return token, fmt.Errorf("db error: %w", err)
 	}
 }
 
-const getNotExpiredToken = `-- name: Get Token by token string itself
-SELECT user_id, created_at, expires_at, used_at
-FROM refresh_tokens
-WHERE token = $1`
+const markTokenUsed = `-- name: Mark token used if it not used
+UPDATE refresh_tokens
+SET used_at = COALESCE(used_at, $2)
+WHERE token = $1
+RETURNING id, user_id, created_at, expires_at, used_at
+`
 
-// Get valid token by token string and expired time
-// The token obviously valid if it exists, not expired and not used
-func (r *RefreshTokenRepo) GetValidToken(ctx context.Context, tokenString string, expiredAfter time.Time) (models.RefreshToken, error) {
-	rows, _ := r.DB.Query(ctx, getNotExpiredToken, tokenString)
+// Mark token as used
+// If token is already used it must return 'apperrors.ErrRefreshTokenIsUsed' error
+// If token is not found it must return 'apperrors.ErrRefreshTokenNotFound' error
+func (r *RefreshTokenRepo) GetAndMarkUsed(ctx context.Context, tokenString string) (models.RefreshToken, error) {
+	now := time.Now().Truncate(time.Microsecond)
+	rows, _ := r.DB.Query(ctx, markTokenUsed, tokenString, now)
+
 	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
 		var t = models.RefreshToken{Token: tokenString}
-		var usedAt pgtype.Timestamptz
-		err := row.Scan(&t.UserID, &t.CreatedAt, &t.ExpiresAt, &usedAt)
-		if err == nil && usedAt.Valid {
-			t.UsedAt = usedAt.Time
-		}
+		err := row.Scan(&t.ID, &t.UserID, &t.CreatedAt, &t.ExpiresAt, &t.UsedAt)
 		return t, err
 	})
 
 	switch {
-	case err == nil:
-		switch {
-		case !token.UsedAt.IsZero():
-			return token, apperrors.ErrRefreshTokenIsUsed
-		case token.ExpiresAt.Before(expiredAfter):
-			return token, apperrors.ErrRefreshTokenExpired
-		default:
-			return token, nil
-		}
+	case err == nil && now.Equal(*token.UsedAt): // UsedAt != nil cause token marked used
+		return token, nil
+	case err == nil: // token.usedAt != now == token is used
+		return token, fmt.Errorf("repo error: %w", apperrors.ErrRefreshTokenIsUsed)
 	case errors.Is(err, pgx.ErrNoRows):
-		return token, apperrors.ErrRefreshTokenNotFound
+		return token, fmt.Errorf("repo error: %w", apperrors.ErrRefreshTokenNotFound)
 	default:
 		return token, fmt.Errorf("db error: %w", err)
-	}
-}
-
-const markTokenUsed = `-- name: Mark token used
-UPDATE refresh_tokens
-SET used_at = COALESCE(used_at, NOW())
-WHERE token = $1
-RETURNING used_at
-`
-
-// Mark token as used
-// Should not rewrite already used tokens
-func (r *RefreshTokenRepo) MarkUsed(ctx context.Context, tokenString string) (time.Time, error) {
-	rows, _ := r.DB.Query(ctx, markTokenUsed, tokenString)
-	usedAt, err := pgx.CollectOneRow(rows, pgx.RowTo[time.Time])
-
-	switch {
-	case err == nil:
-		return usedAt, nil
-	case errors.Is(err, pgx.ErrNoRows):
-		return usedAt, apperrors.ErrRefreshTokenNotFound
-	default:
-		return usedAt, fmt.Errorf("db error: %w", err)
 	}
 }
