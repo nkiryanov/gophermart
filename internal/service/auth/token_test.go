@@ -50,8 +50,10 @@ func Test_TokenManager(t *testing.T) {
 			pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 
 			require.NoError(t, err)
-			assert.NotEmpty(t, pair.Access, "access token should not be empty")
-			assert.NotEmpty(t, pair.Refresh, "refresh token should not be empty")
+			assert.NotEmpty(t, pair.Access.Value, "access token should not be empty")
+			assert.WithinDuration(t, time.Now().Add(15*time.Minute), pair.Access.ExpiresAt, time.Second, "access token should expire in 15 minutes")
+			assert.NotEmpty(t, pair.Refresh.Value, "refresh token should not be empty")
+			assert.WithinDuration(t, time.Now().Add(24*time.Hour), pair.Refresh.ExpiresAt, time.Second, "access token should expire in 15 minutes")
 		})
 	})
 
@@ -70,7 +72,7 @@ func Test_TokenManager(t *testing.T) {
 			require.NoError(t, err)
 
 			// Parse and verify the access token
-			token, err := jwt.ParseWithClaims(pair.Access, &AccessTokenClaims{}, func(token *jwt.Token) (any, error) {
+			token, err := jwt.ParseWithClaims(pair.Access.Value, &AccessTokenClaims{}, func(token *jwt.Token) (any, error) {
 				return []byte("test-secret-key"), nil
 			})
 			require.NoError(t, err)
@@ -82,6 +84,8 @@ func Test_TokenManager(t *testing.T) {
 			assert.NotEmpty(t, claims.ID, "token has to has jti")
 			assert.WithinDuration(t, time.Now(), claims.IssuedAt.Time, time.Second, "issued at should be close to now")
 			assert.WithinDuration(t, time.Now().Add(15*time.Minute), claims.ExpiresAt.Time, time.Second, "expires at should be 15 minutes from now")
+
+			assert.WithinDuration(t, pair.Access.ExpiresAt, claims.ExpiresAt.Time, time.Second, "expires at should match token pair")
 		})
 	})
 
@@ -100,13 +104,16 @@ func Test_TokenManager(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify refresh token exists in database
-			storedToken, err := refreshRepo.GetToken(t.Context(), pair.Refresh)
+			storedToken, err := refreshRepo.Get(t.Context(), pair.Refresh.Value)
 			require.NoError(t, err)
-			assert.Equal(t, pair.Refresh, storedToken.Token, "stored token should match generated token")
+			assert.NotZero(t, storedToken.ID, "stored token should have random id")
 			assert.Equal(t, testUser.ID, storedToken.UserID, "stored token should have correct user ID")
+			assert.Equal(t, pair.Refresh.Value, storedToken.Token, "stored token should match generated token")
 			assert.WithinDuration(t, time.Now(), storedToken.CreatedAt, time.Second, "created at should be close to now")
-			assert.WithinDuration(t, time.Now().Add(24*time.Hour), storedToken.ExpiresAt, time.Second, "expires at should be 24 hours from now")
-			assert.True(t, storedToken.UsedAt.IsZero(), "token should not be marked as used initially")
+			assert.WithinDuration(t, time.Now().Add(24*time.Hour), storedToken.ExpiresAt, time.Second, "expires at should close enough to refresh deadline")
+			assert.Nil(t, storedToken.UsedAt)
+
+			require.WithinDuration(t, pair.Refresh.ExpiresAt, storedToken.ExpiresAt, 0, "saved and returned ExpiresAt should match")
 		})
 	})
 
@@ -127,8 +134,8 @@ func Test_TokenManager(t *testing.T) {
 			pair2, err := tokenManager.GeneratePair(t.Context(), testUser)
 			require.NoError(t, err)
 
-			assert.NotEqual(t, pair1.Refresh, pair2.Refresh, "refresh tokens should be different")
-			assert.NotEqual(t, pair1.Access, pair2.Access, "access tokens should be different")
+			assert.NotEqual(t, pair1.Refresh.Value, pair2.Refresh.Value, "refresh tokens should be different")
+			assert.NotEqual(t, pair1.Access.Value, pair2.Access.Value, "access tokens should be different")
 		})
 	})
 }

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
-	"github.com/google/uuid"
 )
 
 type RefreshTokenRepo struct {
@@ -60,25 +60,30 @@ const markTokenUsed = `-- name: Mark token used if it not used
 UPDATE refresh_tokens
 SET used_at = COALESCE(used_at, $2)
 WHERE token = $1
-RETURNING used_at
+RETURNING id, user_id, created_at, expires_at, used_at
 `
 
 // Mark token as used
-// Must be idempotent: if token is used already it should return return error
-// Should not rewrite already used tokens
-func (r *RefreshTokenRepo) MarkUsed(ctx context.Context, tokenString string) (time.Time, error) {
+// If token is already used it must return 'apperrors.ErrRefreshTokenIsUsed' error
+// If token is not found it must return 'apperrors.ErrRefreshTokenNotFound' error
+func (r *RefreshTokenRepo) GetAndMarkUsed(ctx context.Context, tokenString string) (models.RefreshToken, error) {
 	now := time.Now()
 	rows, _ := r.DB.Query(ctx, markTokenUsed, tokenString, now)
-	usedAt, err := pgx.CollectOneRow(rows, pgx.RowTo[time.Time])
+
+	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
+		var t = models.RefreshToken{Token: tokenString}
+		err := row.Scan(&t.ID, &t.UserID, &t.CreatedAt, &t.ExpiresAt, &t.UsedAt)
+		return t, err
+	})
 
 	switch {
-	case err == nil && usedAt.Equal(now):
-		return usedAt, nil
-	case err == nil:  // usedAt != now == token is used
-		return usedAt, fmt.Errorf("repo error: %w", apperrors.ErrRefreshTokenIsUsed)
+	case err == nil && token.UsedAt.Equal(now): // UsedAt != nil cause token marked used
+		return token, nil
+	case err == nil: // token.usedAt != now == token is used
+		return token, fmt.Errorf("repo error: %w", apperrors.ErrRefreshTokenIsUsed)
 	case errors.Is(err, pgx.ErrNoRows):
-		return usedAt, fmt.Errorf("repo error: %w", apperrors.ErrRefreshTokenNotFound)
+		return token, fmt.Errorf("repo error: %w", apperrors.ErrRefreshTokenNotFound)
 	default:
-		return usedAt, fmt.Errorf("db error: %w", err)
+		return token, fmt.Errorf("db error: %w", err)
 	}
 }

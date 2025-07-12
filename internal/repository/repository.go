@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/nkiryanov/gophermart/internal/models"
@@ -22,20 +21,15 @@ type UserRepo interface {
 
 // RefreshToken repository interface
 type RefreshTokenRepo interface {
-	// Create token in repository
-	Create(ctx context.Context, token models.RefreshToken) (tokenID int64, err error)
-
-	// Mark token as used
-	// If the token is already used, must not overwrite the existing 'usedAt'
-	MarkUsed(ctx context.Context, tokenString string) (usedAt time.Time, err error)
+	// Save token in repository
+	Save(ctx context.Context, token models.RefreshToken) error
 
 	// Return the token if it exists in the database
-	GetToken(ctx context.Context, tokenString string) (models.RefreshToken, error)
+	Get(ctx context.Context, tokenString string) (models.RefreshToken, error)
 
-	// Return a valid token only
-	// If the token is expired, must return error apperrors.ErrRefreshTokenExpired
-	// If the token is used, must return error apperrors.ErrRefreshTokenIsUsed
-	GetValidToken(ctx context.Context, tokenString string, expiredAfter time.Time) (models.RefreshToken, error)
+	// Mark token as used
+	// If the token is already used, must return apperrors.ErrTokenAlreadyUsed and time when token was used
+	GetAndMarkUsed(ctx context.Context, tokenString string) (models.RefreshToken, error)
 
 	// It would be good idea to add methods
 	// Delete expired tokens
