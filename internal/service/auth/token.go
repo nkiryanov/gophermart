@@ -36,7 +36,7 @@ type TokenManager struct {
 
 func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (models.TokenPair, error) {
 	var pair models.TokenPair
-	now := time.Now()
+	now := time.Now().Truncate(time.Second)
 	accessExpiresAt := now.Add(m.accessTTL)
 	refreshExpiresAt := now.Add(m.refreshTTL)
 
@@ -65,7 +65,7 @@ func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (model
 	}
 	refresh := hex.EncodeToString(b)
 
-	err = m.refreshRepo.Save(ctx, models.RefreshToken{
+	_, err = m.refreshRepo.Save(ctx, models.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    user.ID,
 		Token:     refresh,

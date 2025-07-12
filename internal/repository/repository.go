@@ -22,7 +22,7 @@ type UserRepo interface {
 // RefreshToken repository interface
 type RefreshTokenRepo interface {
 	// Save token in repository
-	Save(ctx context.Context, token models.RefreshToken) error
+	Save(ctx context.Context, token models.RefreshToken) (models.RefreshToken, error)
 
 	// Return the token if it exists in the database
 	Get(ctx context.Context, tokenString string) (models.RefreshToken, error)

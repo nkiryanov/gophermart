@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
 )
@@ -19,15 +19,34 @@ type RefreshTokenRepo struct {
 const saveToken = `-- name: Save Refresh Token
 INSERT INTO refresh_tokens (id, user_id, token, created_at, expires_at, used_at)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id`
+RETURNING id, user_id, token, created_at, expires_at, used_at`
 
-func (r *RefreshTokenRepo) Save(ctx context.Context, token models.RefreshToken) error {
-	rows, _ := r.DB.Query(ctx, saveToken, token.ID, token.UserID, token.Token, token.CreatedAt, token.ExpiresAt, token.UsedAt)
-	_, err := pgx.CollectOneRow(rows, pgx.RowTo[uuid.UUID])
-	if err != nil {
-		return fmt.Errorf("db error: %w", err)
+func (r *RefreshTokenRepo) Save(ctx context.Context, token models.RefreshToken) (models.RefreshToken, error) {
+	var usedAt pgtype.Timestamptz
+
+	if token.UsedAt != nil {
+		usedAt.Valid = true
+		usedAt.Time = token.UsedAt.Truncate(time.Microsecond)
 	}
-	return nil
+
+	rows, _ := r.DB.Query(ctx,
+		saveToken,
+		token.ID,
+		token.UserID,
+		token.Token,
+		token.CreatedAt.Truncate(time.Microsecond),
+		token.ExpiresAt.Truncate(time.Microsecond),
+		usedAt,
+	)
+	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
+		var t models.RefreshToken
+		err := row.Scan(&t.ID, &t.UserID, &t.Token, &t.CreatedAt, &t.ExpiresAt, &t.UsedAt)
+		return t, err
+	})
+	if err != nil {
+		return token, fmt.Errorf("db error: %w", err)
+	}
+	return token, nil
 }
 
 const getToken = `-- name: GetToken by string itself
@@ -67,7 +86,7 @@ RETURNING id, user_id, created_at, expires_at, used_at
 // If token is already used it must return 'apperrors.ErrRefreshTokenIsUsed' error
 // If token is not found it must return 'apperrors.ErrRefreshTokenNotFound' error
 func (r *RefreshTokenRepo) GetAndMarkUsed(ctx context.Context, tokenString string) (models.RefreshToken, error) {
-	now := time.Now()
+	now := time.Now().Truncate(time.Microsecond)
 	rows, _ := r.DB.Query(ctx, markTokenUsed, tokenString, now)
 
 	token, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.RefreshToken, error) {
@@ -77,7 +96,7 @@ func (r *RefreshTokenRepo) GetAndMarkUsed(ctx context.Context, tokenString strin
 	})
 
 	switch {
-	case err == nil && token.UsedAt.Equal(now): // UsedAt != nil cause token marked used
+	case err == nil && now.Equal(*token.UsedAt): // UsedAt != nil cause token marked used
 		return token, nil
 	case err == nil: // token.usedAt != now == token is used
 		return token, fmt.Errorf("repo error: %w", apperrors.ErrRefreshTokenIsUsed)

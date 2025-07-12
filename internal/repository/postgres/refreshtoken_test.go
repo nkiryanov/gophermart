@@ -40,16 +40,22 @@ func Test_RefreshTokenRepo(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
 
-			err := repo.Save(t.Context(), token)
+			got, err := repo.Save(t.Context(), token)
 
 			require.NoError(t, err)
+			require.Equal(t, token.ID, got.ID)
+			require.Equal(t, token.UserID, got.UserID)
+			require.Equal(t, token.Token, got.Token)
+			require.WithinDuration(t, token.CreatedAt, got.CreatedAt, time.Microsecond)
+			require.WithinDuration(t, token.ExpiresAt, got.ExpiresAt, time.Microsecond)
+			require.Nil(t, got.UsedAt, "UsedAt should be nil cause original token has UsedAt as nil")
 		})
 	})
 
 	t.Run("get token ok", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
-			err := repo.Save(t.Context(), token)
+			_, err := repo.Save(t.Context(), token)
 			require.NoError(t, err)
 
 			got, err := repo.Get(t.Context(), token.Token)
@@ -66,7 +72,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 	t.Run("mark token used", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
-			err := repo.Save(t.Context(), token)
+			_, err := repo.Save(t.Context(), token)
 			require.NoError(t, err)
 
 			got, err := repo.GetAndMarkUsed(t.Context(), token.Token)
@@ -95,7 +101,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 	t.Run("mark used is idempotent", func(t *testing.T) {
 		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
-			err := repo.Save(t.Context(), token)
+			_, err := repo.Save(t.Context(), token)
 			require.NoError(t, err)
 
 			tokenFirst, err := repo.GetAndMarkUsed(t.Context(), token.Token)
