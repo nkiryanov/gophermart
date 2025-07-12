@@ -2,7 +2,13 @@ package service
 
 import (
 	"context"
+
 )
+
+type Token struct {
+	Type string
+	ID: 
+
 
 type TokenPair struct {
 	Access  string

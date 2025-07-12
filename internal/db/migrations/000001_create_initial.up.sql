@@ -6,7 +6,7 @@ CREATE TABLE users (
 );
 
 CREATE TABLE refresh_tokens (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
     token VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),

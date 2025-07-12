@@ -6,9 +6,10 @@ import (
 )
 
 type RefreshToken struct {
-	Token     string
+	ID uuid.UUID
 	UserID    uuid.UUID
+	Token     string
 	CreatedAt time.Time
 	ExpiresAt time.Time
-	UsedAt    time.Time // zero value means the token is not used
+	UsedAt    *time.Time  // nil if token not used
 }
