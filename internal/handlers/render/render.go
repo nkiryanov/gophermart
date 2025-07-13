@@ -24,34 +24,40 @@ type ErrorResponse struct {
 	Fields  map[string]string `json:"fields,omitempty"`
 }
 
-// BindAndValidate decodes JSON request body into type T and validates it using struct tags.
-// Returns the decoded value and writes appropriate error responses for decoding or validation failures.
-func BindAndValidate[T Struct](w http.ResponseWriter, r *http.Request) (T, error) {
-	var value T
-
-	err := json.NewDecoder(r.Body).Decode(&value)
-	if err != nil {
-		WriteDecodingError(w, err)
-		return value, err
-	}
-
-	err = validate.Struct(value)
-	if err != nil {
-		// pretty sure cast will be ok cause expecting T is valid struct
-		errs := err.(validator.ValidationErrors)
-		WriteValidationError(w, errs)
-		return value, err
-	}
-
-	return value, nil
-}
-
 func JSON(w http.ResponseWriter, data any) {
-	renderJSONWithStatus(w, data, http.StatusOK)
+	jsonWithStatus(w, data, http.StatusOK)
 }
 
-// WriteValidationError writes validation errors in beautiful JSON format
-func WriteValidationError(w http.ResponseWriter, errs validator.ValidationErrors) {
+// Render ServiceError
+func ServiceError(w http.ResponseWriter, error string, code int) {
+	response := ErrorResponse{
+		Error:   ServiceErrorType,
+		Message: error,
+	}
+
+	jsonWithStatus(w, response, code)
+}
+
+// Render json DecodeError
+func DecodeError(w http.ResponseWriter, err error) {
+	response := ErrorResponse{
+		Error:   DecodingErrorType,
+		Message: "",
+	}
+
+	// Try to provide more specific error message based on error type
+	switch err := err.(type) {
+	case *json.UnmarshalTypeError:
+		response.Message = fmt.Sprintf("Invalid data type for field '%s'", err.Field)
+	default:
+		response.Message = fmt.Sprintf("Failed to parse JSON: %s", err.Error())
+	}
+
+	jsonWithStatus(w, response, http.StatusBadRequest)
+}
+
+// Render ValidationErrors
+func ValidationErrors(w http.ResponseWriter, errs validator.ValidationErrors) {
 	response := ErrorResponse{
 		Error:   ValidationErrorType,
 		Message: "Request validation failed",
@@ -66,8 +72,6 @@ func WriteValidationError(w http.ResponseWriter, errs validator.ValidationErrors
 			message = "This field is required"
 		case "min":
 			message = fmt.Sprintf("Value is too short (minimum %s)", fieldError.Param())
-		case "max":
-			message = fmt.Sprintf("Value is too long (maximum %s)", fieldError.Param())
 		default:
 			message = "Invalid value"
 		}
@@ -75,38 +79,33 @@ func WriteValidationError(w http.ResponseWriter, errs validator.ValidationErrors
 		response.Fields[fieldError.Field()] = message
 	}
 
-	renderJSONWithStatus(w, response, http.StatusBadRequest)
+	jsonWithStatus(w, response, http.StatusBadRequest)
 }
 
-// WriteDecodingError writes JSON decoding errors in beautiful format
-func WriteDecodingError(w http.ResponseWriter, err error) {
-	response := ErrorResponse{
-		Error:   DecodingErrorType,
-		Message: "",
+// BindAndValidate decodes JSON request body into type T and validates it using struct tags.
+// Returns the decoded value and writes appropriate error responses for decoding or validation failures.
+func BindAndValidate[T Struct](w http.ResponseWriter, r *http.Request) (T, error) {
+	var value T
+
+	err := json.NewDecoder(r.Body).Decode(&value)
+	if err != nil {
+		DecodeError(w, err)
+		return value, err
 	}
 
-	// Try to provide more specific error message based on error type
-	switch err := err.(type) {
-	case *json.UnmarshalTypeError:
-		response.Message = "Invalid data type for field '" + err.Field + "'"
-	default:
-		response.Message = "Failed to parse JSON: " + err.Error()
+	err = validate.Struct(value)
+	if err != nil {
+		// pretty sure cast will be ok cause expecting T is valid struct
+		errs := err.(validator.ValidationErrors)
+		ValidationErrors(w, errs)
+		return value, err
 	}
 
-	renderJSONWithStatus(w, response, http.StatusBadRequest)
-}
-
-func WriteServiceError(w http.ResponseWriter, error string, code int) {
-	response := ErrorResponse{
-		Error:   ServiceErrorType,
-		Message: error,
-	}
-
-	renderJSONWithStatus(w, response, code)
+	return value, nil
 }
 
 // renderJSONWithStatus sends data as json and enforces status code
-func renderJSONWithStatus(w http.ResponseWriter, data interface{}, code int) {
+func jsonWithStatus(w http.ResponseWriter, data any, code int) {
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 
