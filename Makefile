@@ -15,3 +15,7 @@ lint:
 .PHONE: generate
 generate:
 	go generate ./...
+
+.PHONE: build
+build:
+	cd cmd/gophermart && go build .

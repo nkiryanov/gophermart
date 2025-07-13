@@ -1,4 +1,4 @@
-package auth
+package handlers
 
 import (
 	"context"
@@ -29,11 +29,15 @@ type AuthHandler struct {
 	auth AuthService
 }
 
+func NewAuthHandler(auth AuthService) *AuthHandler {
+	return &AuthHandler{auth: auth}
+}
+
 func (h *AuthHandler) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/register", h.register)
-	mux.HandleFunc("/login", h.login)
-	mux.HandleFunc("/refresh", h.refresh)
+	mux.HandleFunc("POST /register", h.register)
+	mux.HandleFunc("POST /login", h.login)
+	mux.HandleFunc("POST /refresh", h.refresh)
 
 	return mux
 }
@@ -61,6 +65,7 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 		default:
 			render.WriteServiceError(w, "Internal server error", http.StatusInternalServerError)
 		}
+		return
 	}
 
 	h.auth.SetAuth(r.Context(), w, pair)
@@ -90,6 +95,7 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		default:
 			render.WriteServiceError(w, "Internal server error", http.StatusInternalServerError)
 		}
+		return
 	}
 
 	h.auth.SetAuth(r.Context(), w, pair)
@@ -115,6 +121,7 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 		default:
 			render.WriteServiceError(w, "Refresh token not found", http.StatusUnauthorized)
 		}
+		return
 	}
 
 	h.auth.SetAuth(r.Context(), w, pair)

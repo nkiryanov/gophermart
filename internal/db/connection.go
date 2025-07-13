@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -30,12 +31,12 @@ func Migrate(dsn string) error {
 		strings.Replace(dsn, "postgres://", "pgx5://", 1), // golang-migrate expects dsn in format 'pgx5://...' only, make it happy with 'postgres://...'
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("error while preparing migrator. Err: %w", err)
 	}
 
 	err = migrator.Up()
 	if err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return err
+		return fmt.Errorf("error while applying migrations. Err: %w", err)
 	}
 
 	return nil
@@ -44,7 +45,7 @@ func Migrate(dsn string) error {
 func Connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cant initialize connection pool. Err: %w", err)
 	}
 
 	return pool, err
