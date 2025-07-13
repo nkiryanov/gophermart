@@ -4,11 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/repository"
+)
+
+const (
+	defaultAccessHeaderName = "Authorization"
+	defaultAccessAuthScheme = "Bearer"
+	defaultAccessTokenTTL   = 15 * time.Minute
+
+	defaultRefreshTokenTTL   = 24 * time.Hour
+	defaultRefreshCookieName = "refreshtoken"
 )
 
 // Interface to create or compare user password hashes
@@ -28,13 +38,22 @@ type AuthServiceConfig struct {
 	// Hasher to user during user registration or login process
 	Hasher PasswordHasher
 
-	// Access and refresh token lifetimes
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
+	// Access token lifetime, header name, auth scheme (like Bearer)
+	AccessTokenTTL   time.Duration
+	AccessHeaderName string
+	AccessAuthScheme string
+
+	// Refresh token lifetime, cookie name
+	RefreshTokenTTL   time.Duration
+	RefreshCookieName string
 }
 
 // Auth service
 type AuthService struct {
+	accessHeaderName  string
+	accessAuthScheme  string
+	refreshCookieName string
+
 	// Manager to issue token pairs (access and refresh)
 	token TokenManager
 
@@ -46,14 +65,35 @@ type AuthService struct {
 }
 
 func NewAuthService(cfg AuthServiceConfig, userRepo repository.UserRepo, refreshRepo repository.RefreshTokenRepo) (*AuthService, error) {
+	if refreshRepo == nil || userRepo == nil {
+		return nil, errors.New("repos must not be nil")
+	}
+
+	if cfg.SecretKey == "" {
+		return nil, errors.New("secret key must not be empty")
+	}
+
+	setDefaultString := func(fld *string, def string) {
+		if *fld == "" {
+			*fld = def
+		}
+	}
+	setDefaultDuration := func(fld *time.Duration, def time.Duration) {
+		if *fld == 0 {
+			*fld = def
+		}
+	}
+
+	setDefaultString(&cfg.AccessHeaderName, defaultAccessHeaderName)
+	setDefaultString(&cfg.AccessAuthScheme, defaultAccessAuthScheme)
+	setDefaultString(&cfg.RefreshCookieName, defaultRefreshCookieName)
+	setDefaultDuration(&cfg.AccessTokenTTL, defaultAccessTokenTTL)
+	setDefaultDuration(&cfg.RefreshTokenTTL, defaultRefreshTokenTTL)
+
 	// Set default bcrypt hasher if not user provided by user
 	hasher := cfg.Hasher
 	if hasher == nil {
 		hasher = BcryptHasher{}
-	}
-
-	if refreshRepo == nil || userRepo == nil {
-		return nil, errors.New("repos must not be nil")
 	}
 
 	tokenManager := TokenManager{
@@ -65,6 +105,10 @@ func NewAuthService(cfg AuthServiceConfig, userRepo repository.UserRepo, refresh
 	}
 
 	return &AuthService{
+		accessHeaderName:  cfg.AccessHeaderName,
+		accessAuthScheme:  cfg.AccessAuthScheme,
+		refreshCookieName: cfg.RefreshCookieName,
+
 		token:    tokenManager,
 		hasher:   hasher,
 		userRepo: userRepo,
@@ -76,17 +120,17 @@ func (s *AuthService) Register(ctx context.Context, username string, password st
 
 	hash, err := s.hasher.Hash(password)
 	if err != nil {
-		return pair, fmt.Errorf("can't use this as password, error=%w", err)
+		return pair, fmt.Errorf("can't use this as password, Err: %w", err)
 	}
 
 	user, err := s.userRepo.CreateUser(ctx, username, hash)
 	if err != nil {
-		return pair, err
+		return pair, fmt.Errorf("can't register user. Err: %w", err)
 	}
 
 	pair, err = s.token.GeneratePair(ctx, user)
 	if err != nil {
-		return pair, fmt.Errorf("token could not generated, sorry. %w", err)
+		return pair, fmt.Errorf("token could not generated, sorry. Err: %w", err)
 	}
 
 	return pair, nil
@@ -108,7 +152,7 @@ func (s *AuthService) Login(ctx context.Context, username string, password strin
 
 	pair, err = s.token.GeneratePair(ctx, user)
 	if err != nil {
-		return pair, fmt.Errorf("token could not be generated, sorry. %w", err)
+		return pair, fmt.Errorf("token could not be generated, sorry. Err: %w", err)
 	}
 
 	return pair, nil
@@ -132,8 +176,29 @@ func (s *AuthService) Refresh(ctx context.Context, refresh string) (models.Token
 
 	pair, err = s.token.GeneratePair(ctx, user)
 	if err != nil {
-		return pair, fmt.Errorf("token could not generated, sorry. %w", err)
+		return pair, fmt.Errorf("token could not generated, sorry. Err: %w", err)
 	}
 
 	return pair, nil
+}
+
+func (s *AuthService) SetAuth(ctx context.Context, w http.ResponseWriter, pair models.TokenPair) {
+	w.Header().Set(s.accessHeaderName, fmt.Sprintf("%s %s", s.accessAuthScheme, pair.Access.Value))
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.refreshCookieName,
+		Value:    pair.Refresh.Value,
+		Path:     "/",
+		Expires:  pair.Refresh.ExpiresAt,
+		HttpOnly: true,
+		Secure:   false,
+	})
+}
+
+func (s *AuthService) ReadRefreshToken(r *http.Request) (string, error) {
+	cookie, err := r.Cookie(s.refreshCookieName)
+	if err != nil {
+		return "", fmt.Errorf("can't read refresh token from cookie: %w", err)
+	}
+
+	return cookie.Value, nil
 }
