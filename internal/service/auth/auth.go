@@ -64,7 +64,7 @@ type AuthService struct {
 	userRepo repository.UserRepo
 }
 
-func NewAuthService(cfg AuthServiceConfig, userRepo repository.UserRepo, refreshRepo repository.RefreshTokenRepo) (*AuthService, error) {
+func NewService(cfg AuthServiceConfig, userRepo repository.UserRepo, refreshRepo repository.RefreshTokenRepo) (*AuthService, error) {
 	if refreshRepo == nil || userRepo == nil {
 		return nil, errors.New("repos must not be nil")
 	}
@@ -188,9 +188,11 @@ func (s *AuthService) SetAuth(ctx context.Context, w http.ResponseWriter, pair m
 		Name:     s.refreshCookieName,
 		Value:    pair.Refresh.Value,
 		Path:     "/",
+		MaxAge:   int(time.Until(pair.Refresh.ExpiresAt).Seconds()),
 		Expires:  pair.Refresh.ExpiresAt,
 		HttpOnly: true,
 		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
 	})
 }
 

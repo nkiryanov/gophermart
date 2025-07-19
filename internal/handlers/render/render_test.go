@@ -106,12 +106,10 @@ func TestRender_DecodeError(t *testing.T) {
 }
 
 func TestRender_ValidationErrors(t *testing.T) {
-	validate := validator.New()
-
 	type T struct {
-		Username string `validate:"required"`
-		Password string `validate:"min=6"`
-		Email    string `validate:"email"`
+		Username string `json:"username" validate:"required"`
+		Password string `json:"password" validate:"min=6"`
+		Email    string `json:"email" validate:"email"`
 	}
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -143,9 +141,9 @@ func TestRender_ValidationErrors(t *testing.T) {
 		Error:   "validation_failed",
 		Message: "Request validation failed",
 		Fields: map[string]string{
-			"Username": "This field is required",         // Message for 'required' tag
-			"Password": "Value is too short (minimum 6)", // Message for 'min' validation tag
-			"Email":    "Invalid value",                  // Unknown validation tag failed: default validation error message
+			"username": "This field is required",         // Message for 'required' tag
+			"password": "Value is too short (minimum 6)", // Message for 'min' validation tag
+			"email":    "Invalid value",                  // Unknown validation tag failed: default validation error message
 		},
 	})
 	require.NoError(t, err)
@@ -187,7 +185,7 @@ func TestRender_BindAndValidate(t *testing.T) {
 				"error": "validation_failed",
 				"message": "Request validation failed",
 				"fields": {
-					"Username": "This field is required"
+					"username": "This field is required"
 				}
 			}`,
 		},

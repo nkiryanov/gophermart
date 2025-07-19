@@ -36,7 +36,7 @@ func NewServerApp(ctx context.Context) (*ServerApp, error) {
 	refreshRepo := &postgres.RefreshTokenRepo{DB: pool}
 
 	// Initializer auth service
-	authService, err := auth.NewAuthService(
+	authService, err := auth.NewService(
 		auth.AuthServiceConfig{SecretKey: SecretKey},
 		userRepo,
 		refreshRepo,
