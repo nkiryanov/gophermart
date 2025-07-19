@@ -41,7 +41,7 @@ func Test_TokenManager(t *testing.T) {
 			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
 			tokenManager := TokenManager{
 				key:         "test-secret-key",
-				alg:         "HS256",
+				alg:         jwt.SigningMethodHS256,
 				accessTTL:   15 * time.Minute,
 				refreshTTL:  24 * time.Hour,
 				refreshRepo: &refreshRepo,
@@ -63,7 +63,7 @@ func Test_TokenManager(t *testing.T) {
 			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
 			tokenManager := TokenManager{
 				key:         "test-secret-key",
-				alg:         "HS256",
+				alg:         jwt.SigningMethodHS256,
 				accessTTL:   15 * time.Minute,
 				refreshTTL:  24 * time.Hour,
 				refreshRepo: &refreshRepo,
@@ -95,7 +95,7 @@ func Test_TokenManager(t *testing.T) {
 			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
 			tokenManager := TokenManager{
 				key:         "test-secret-key",
-				alg:         "HS256",
+				alg:         jwt.SigningMethodHS256,
 				accessTTL:   15 * time.Minute,
 				refreshTTL:  24 * time.Hour,
 				refreshRepo: &refreshRepo,
@@ -123,7 +123,7 @@ func Test_TokenManager(t *testing.T) {
 			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
 			tokenManager := TokenManager{
 				key:         "test-secret-key",
-				alg:         "HS256",
+				alg:         jwt.SigningMethodHS256,
 				accessTTL:   15 * time.Minute,
 				refreshTTL:  24 * time.Hour,
 				refreshRepo: &refreshRepo,

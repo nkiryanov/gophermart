@@ -24,7 +24,7 @@ type TokenManager struct {
 	key string
 
 	// JWT MAC (Message Authentication Code) algorithm
-	alg string
+	alg jwt.SigningMethod
 
 	// Access and refresh token lifetimes
 	accessTTL  time.Duration
@@ -42,7 +42,7 @@ func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (model
 
 	// Generate JWT access token decoded as string
 	accessToken := jwt.NewWithClaims(
-		jwt.GetSigningMethod(m.alg),
+		m.alg,
 		AccessTokenClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				ID:        uuid.NewString(),
@@ -95,4 +95,22 @@ func (m TokenManager) UseRefreshToken(ctx context.Context, refresh string) (mode
 	}
 
 	return token, nil
+}
+
+// Parse and validate access token
+func (m TokenManager) ParseAccess(ctx context.Context, access string) (userID uuid.UUID, err error) {
+	claims := &AccessTokenClaims{}
+	token, err := jwt.ParseWithClaims(
+		access,
+		claims,
+		func(t *jwt.Token) (any, error) { return []byte(m.key), nil },
+		jwt.WithValidMethods([]string{m.alg.Alg()}),
+	)
+
+	switch {
+	case token.Valid:
+		return claims.UserID, nil
+	default:
+		return uuid.Nil, fmt.Errorf("error parsing token. Err: %w", err)
+	}
 }

@@ -36,7 +36,7 @@ func TestAuthHandler(t *testing.T) {
 			s, err := auth.NewService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
 			require.NoError(t, err, "auth service starting error", err)
 
-			h := NewAuthHandler(s)
+			h := NewAuth(s)
 			srv := httptest.NewServer(h.Handler())
 			defer srv.Close()
 

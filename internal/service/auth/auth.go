@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
@@ -16,6 +19,7 @@ const (
 	defaultAccessHeaderName = "Authorization"
 	defaultAccessAuthScheme = "Bearer"
 	defaultAccessTokenTTL   = 15 * time.Minute
+	defaultSigningMethod    = "HS256"
 
 	defaultRefreshTokenTTL   = 24 * time.Hour
 	defaultRefreshCookieName = "refreshtoken"
@@ -98,7 +102,7 @@ func NewService(cfg AuthServiceConfig, userRepo repository.UserRepo, refreshRepo
 
 	tokenManager := TokenManager{
 		key:         cfg.SecretKey,
-		alg:         "HS256",
+		alg:         jwt.GetSigningMethod(defaultSigningMethod),
 		accessTTL:   cfg.AccessTokenTTL,
 		refreshTTL:  cfg.RefreshTokenTTL,
 		refreshRepo: refreshRepo,
@@ -182,7 +186,7 @@ func (s *AuthService) Refresh(ctx context.Context, refresh string) (models.Token
 	return pair, nil
 }
 
-func (s *AuthService) SetAuth(ctx context.Context, w http.ResponseWriter, pair models.TokenPair) {
+func (s *AuthService) SetTokens(ctx context.Context, w http.ResponseWriter, pair models.TokenPair) {
 	w.Header().Set(s.accessHeaderName, fmt.Sprintf("%s %s", s.accessAuthScheme, pair.Access.Value))
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.refreshCookieName,
@@ -196,11 +200,40 @@ func (s *AuthService) SetAuth(ctx context.Context, w http.ResponseWriter, pair m
 	})
 }
 
-func (s *AuthService) ReadRefreshToken(r *http.Request) (string, error) {
+func (s *AuthService) GetRefresh(r *http.Request) (string, error) {
 	cookie, err := r.Cookie(s.refreshCookieName)
 	if err != nil {
 		return "", fmt.Errorf("can't read refresh token from cookie: %w", err)
 	}
 
 	return cookie.Value, nil
+}
+
+func (s *AuthService) Auth(ctx context.Context, r *http.Request) (models.User, error) {
+	var u models.User
+	var scheme = fmt.Sprintf("%s ", s.accessAuthScheme)
+
+	auth := r.Header.Get(s.accessHeaderName)
+	if auth == "" {
+		return u, errors.New("auth header doesn't set")
+	}
+	if !strings.HasPrefix(auth, scheme) {
+		return u, errors.New("invalid auth header scheme")
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(auth, scheme))
+	if token == "" {
+		return u, errors.New("empty auth token")
+	}
+
+	userID, err := s.token.ParseAccess(ctx, token)
+	if err != nil {
+		return u, fmt.Errorf("token is not valid. Err: %w", err)
+	}
+
+	u, err = s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return u, fmt.Errorf("user not found. Err: %w", err)
+	}
+
+	return u, err
 }

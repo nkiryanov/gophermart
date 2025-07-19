@@ -1,43 +1,20 @@
 package handlers
 
 import (
-	"context"
 	"errors"
 	"net/http"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/handlers/render"
-	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/service"
 )
 
-// Auth service
-type AuthService interface {
-	// Register user with username and password
-	// Has to return apperrors.ErrUserAlreadyExists if user already exists
-	Register(ctx context.Context, username string, password string) (models.TokenPair, error)
-
-	// Login user with username and password
-	// Has to return apperrors.ErrUserNotFound if user not found
-	Login(ctx context.Context, username string, password string) (models.TokenPair, error)
-
-	// Refresh tokens using refresh token
-	// If token expired: has to return apperrors.ErrRefreshTokenExpired
-	// If token not found: has to return apperrors.ErrRefreshTokenNotFound
-	Refresh(ctx context.Context, refresh string) (models.TokenPair, error)
-
-	// SetAuth auth tokens (access, refresh, csrf if any)
-	SetAuth(ctx context.Context, w http.ResponseWriter, tokens models.TokenPair)
-
-	// Symmetric to 'SetAuth': extracts refresh token form request
-	ReadRefreshToken(r *http.Request) (string, error)
-}
-
 type AuthHandler struct {
-	auth AuthService
+	authService service.Auth
 }
 
-func NewAuthHandler(auth AuthService) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewAuth(auth service.Auth) *AuthHandler {
+	return &AuthHandler{authService: auth}
 }
 
 func (h *AuthHandler) Handler() http.Handler {
@@ -64,7 +41,7 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pair, err := h.auth.Register(r.Context(), data.Login, data.Password)
+	pair, err := h.authService.Register(r.Context(), data.Login, data.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, apperrors.ErrUserAlreadyExists):
@@ -75,7 +52,7 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.auth.SetAuth(r.Context(), w, pair)
+	h.authService.SetTokens(r.Context(), w, pair)
 	render.JSON(w, RegisterSuccessResponse{Message: "User registered successfully"})
 }
 
@@ -94,7 +71,7 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pair, err := h.auth.Login(r.Context(), data.Login, data.Password)
+	pair, err := h.authService.Login(r.Context(), data.Login, data.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, apperrors.ErrUserNotFound):
@@ -105,7 +82,7 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.auth.SetAuth(r.Context(), w, pair)
+	h.authService.SetTokens(r.Context(), w, pair)
 	render.JSON(w, LoginSuccessResponse{Message: "User logged in successfully"})
 }
 
@@ -114,12 +91,12 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 		Message string `json:"message"`
 	}
 
-	refresh, err := h.auth.ReadRefreshToken(r)
+	refresh, err := h.authService.GetRefresh(r)
 	if err != nil {
 		render.ServiceError(w, "Refresh token not found", http.StatusUnauthorized)
 	}
 
-	pair, err := h.auth.Refresh(r.Context(), refresh)
+	pair, err := h.authService.Refresh(r.Context(), refresh)
 	if err != nil {
 		// Consider to log errors here
 		switch {
@@ -131,6 +108,6 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.auth.SetAuth(r.Context(), w, pair)
+	h.authService.SetTokens(r.Context(), w, pair)
 	render.JSON(w, RefreshSuccessResponse{Message: "Tokens refreshed successfully"})
 }
