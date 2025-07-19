@@ -100,17 +100,18 @@ func (m TokenManager) UseRefreshToken(ctx context.Context, refresh string) (mode
 // Parse and validate access token
 func (m TokenManager) ParseAccess(ctx context.Context, access string) (userID uuid.UUID, err error) {
 	claims := &AccessTokenClaims{}
-	token, err := jwt.ParseWithClaims(
+
+	_, err = jwt.ParseWithClaims(
 		access,
 		claims,
-		func(t *jwt.Token) (any, error) { return []byte(m.key), nil },
+		func(t *jwt.Token) (any, error) {
+			return []byte(m.key), nil
+		},
 		jwt.WithValidMethods([]string{m.alg.Alg()}),
 	)
-
-	switch {
-	case token.Valid:
-		return claims.UserID, nil
-	default:
-		return uuid.Nil, fmt.Errorf("error parsing token. Err: %w", err)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("error while parsing or validating token. Err: %w", err)
 	}
+
+	return claims.UserID, nil
 }

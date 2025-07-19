@@ -7,6 +7,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -36,107 +37,189 @@ func Test_TokenManager(t *testing.T) {
 		HashedPassword: "hashed_password",
 	}
 
-	t.Run("generate pair ok", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+	withTx := func(dbpool *pgxpool.Pool, t *testing.T, accessTTL time.Duration, refreshTTL time.Duration, fn func(m TokenManager)) {
+		testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
 			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
 			tokenManager := TokenManager{
 				key:         "test-secret-key",
 				alg:         jwt.SigningMethodHS256,
-				accessTTL:   15 * time.Minute,
-				refreshTTL:  24 * time.Hour,
+				accessTTL:   accessTTL,
+				refreshTTL:  refreshTTL,
 				refreshRepo: &refreshRepo,
 			}
 
-			pair, err := tokenManager.GeneratePair(t.Context(), testUser)
+			fn(tokenManager)
+		})
+	}
 
-			require.NoError(t, err)
+	t.Run("GeneratePair", func(t *testing.T) {
+		t.Run("return token pair", func(t *testing.T) {
+			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
+				func(tokenManager TokenManager) {
+					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 
-			assert.NotEmpty(t, pair.Access.Value, "access token should not be empty")
-			assert.WithinDuration(t, time.Now().Add(15*time.Minute), pair.Access.ExpiresAt, time.Second)
-			assert.NotEmpty(t, pair.Refresh.Value, "refresh token should not be empty")
-			assert.WithinDuration(t, time.Now().Add(24*time.Hour), pair.Refresh.ExpiresAt, time.Second)
+					require.NoError(t, err)
+
+					assert.NotEmpty(t, pair.Access.Value, "access token should not be empty")
+					assert.WithinDuration(t, time.Now().Add(15*time.Minute), pair.Access.ExpiresAt, time.Second)
+					assert.NotEmpty(t, pair.Refresh.Value, "refresh token should not be empty")
+					assert.WithinDuration(t, time.Now().Add(24*time.Hour), pair.Refresh.ExpiresAt, time.Second)
+				},
+			)
+		})
+
+		t.Run("access claims", func(t *testing.T) {
+			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
+				func(tokenManager TokenManager) {
+					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
+					require.NoError(t, err)
+
+					// Parse and verify the access token
+					token, err := jwt.ParseWithClaims(pair.Access.Value, &AccessTokenClaims{}, func(token *jwt.Token) (any, error) {
+						return []byte("test-secret-key"), nil
+					})
+					require.NoError(t, err)
+					require.True(t, token.Valid, "access token should be valid")
+
+					claims, ok := token.Claims.(*AccessTokenClaims)
+					require.True(t, ok, "claims should be of type AccessTokenClaims")
+					assert.Equal(t, testUser.ID, claims.UserID, "user ID in token should match")
+					assert.NotEmpty(t, claims.ID, "token has to has jti")
+					assert.WithinDuration(t, time.Now(), claims.IssuedAt.Time, time.Second, "issued at should be close to now")
+					assert.WithinDuration(t, time.Now().Add(15*time.Minute), claims.ExpiresAt.Time, time.Second, "expires at should be 15 minutes from now")
+
+					assert.WithinDuration(t, pair.Access.ExpiresAt, claims.ExpiresAt.Time, 0, "access expires at should match token pair")
+				},
+			)
+		})
+
+		t.Run("generate different tokens", func(t *testing.T) {
+			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
+				func(tokenManager TokenManager) {
+					pair1, err := tokenManager.GeneratePair(t.Context(), testUser)
+					require.NoError(t, err)
+
+					pair2, err := tokenManager.GeneratePair(t.Context(), testUser)
+					require.NoError(t, err)
+
+					assert.NotEqual(t, pair1.Refresh.Value, pair2.Refresh.Value, "refresh tokens should be different")
+					assert.NotEqual(t, pair1.Access.Value, pair2.Access.Value, "access tokens should be different")
+				},
+			)
 		})
 	})
 
-	t.Run("access token has correct claims", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
-			tokenManager := TokenManager{
-				key:         "test-secret-key",
-				alg:         jwt.SigningMethodHS256,
-				accessTTL:   15 * time.Minute,
-				refreshTTL:  24 * time.Hour,
-				refreshRepo: &refreshRepo,
-			}
+	t.Run("UseRefreshToken", func(t *testing.T) {
+		t.Run("use token once", func(t *testing.T) {
+			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
+				func(tokenManager TokenManager) {
+					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
+					require.NoError(t, err)
 
-			pair, err := tokenManager.GeneratePair(t.Context(), testUser)
-			require.NoError(t, err)
+					token, err := tokenManager.UseRefreshToken(t.Context(), pair.Refresh.Value)
+					require.NoError(t, err, "using refresh token should not return an error")
 
-			// Parse and verify the access token
-			token, err := jwt.ParseWithClaims(pair.Access.Value, &AccessTokenClaims{}, func(token *jwt.Token) (any, error) {
-				return []byte("test-secret-key"), nil
-			})
-			require.NoError(t, err)
-			require.True(t, token.Valid, "access token should be valid")
+					require.Equal(t, testUser.ID, token.UserID)
+					require.WithinDuration(t, pair.Refresh.ExpiresAt, token.ExpiresAt, 1, "refresh token expiration should match expected value")
+				},
+			)
+		})
 
-			claims, ok := token.Claims.(*AccessTokenClaims)
-			require.True(t, ok, "claims should be of type AccessTokenClaims")
-			assert.Equal(t, testUser.ID, claims.UserID, "user ID in token should match")
-			assert.NotEmpty(t, claims.ID, "token has to has jti")
-			assert.WithinDuration(t, time.Now(), claims.IssuedAt.Time, time.Second, "issued at should be close to now")
-			assert.WithinDuration(t, time.Now().Add(15*time.Minute), claims.ExpiresAt.Time, time.Second, "expires at should be 15 minutes from now")
+		t.Run("use token twice", func(t *testing.T) {
+			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
+				func(tokenManager TokenManager) {
+					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
+					require.NoError(t, err)
 
-			assert.WithinDuration(t, pair.Access.ExpiresAt, claims.ExpiresAt.Time, 0, "access expires at should match token pair")
+					// Use the token once
+					_, err = tokenManager.UseRefreshToken(t.Context(), pair.Refresh.Value)
+					require.NoError(t, err, "using refresh token should not return an error")
+
+					// Try to use the same token again
+					_, err = tokenManager.UseRefreshToken(t.Context(), pair.Refresh.Value)
+					require.Error(t, err, "using the same refresh token again should return an error")
+				},
+			)
+		})
+
+		t.Run("use expired token", func(t *testing.T) {
+			withTx(pg.Pool, t, 1*time.Second, 1*time.Second,
+				func(tokenManager TokenManager) {
+					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
+					require.NoError(t, err)
+
+					// Wait for the token to expire
+					time.Sleep(time.Second)
+
+					// Verify refresh token exists in database
+					_, err = tokenManager.UseRefreshToken(t.Context(), pair.Refresh.Value)
+					require.Error(t, err, "using expired refresh token should return an error")
+				},
+			)
 		})
 	})
 
-	t.Run("refresh token stored in database", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
-			tokenManager := TokenManager{
-				key:         "test-secret-key",
-				alg:         jwt.SigningMethodHS256,
-				accessTTL:   15 * time.Minute,
-				refreshTTL:  24 * time.Hour,
-				refreshRepo: &refreshRepo,
-			}
+	t.Run("ParseAccess", func(t *testing.T) {
+		t.Run("valid token", func(t *testing.T) {
+			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
+				func(tokenManager TokenManager) {
+					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
+					require.NoError(t, err, "token pair should be generated without errors")
 
-			pair, err := tokenManager.GeneratePair(t.Context(), testUser)
-			require.NoError(t, err)
-
-			// Verify refresh token exists in database
-			storedToken, err := refreshRepo.Get(t.Context(), pair.Refresh.Value)
-			require.NoError(t, err)
-			assert.NotZero(t, storedToken.ID, "stored token should have random id")
-			assert.Equal(t, testUser.ID, storedToken.UserID, "stored token should have correct user ID")
-			assert.Equal(t, pair.Refresh.Value, storedToken.Token, "stored token should match generated token")
-			assert.WithinDuration(t, time.Now(), storedToken.CreatedAt, time.Second, "created at should be close to now")
-			assert.WithinDuration(t, time.Now().Add(24*time.Hour), storedToken.ExpiresAt, time.Second, "expires at should close enough to refresh deadline")
-			assert.Nil(t, storedToken.UsedAt)
-
-			require.WithinDuration(t, pair.Refresh.ExpiresAt, storedToken.ExpiresAt, 0, "refresh saved and returned ExpiresAt should match")
+					userID, err := tokenManager.ParseAccess(t.Context(), pair.Access.Value)
+					require.NoError(t, err, "valid token should be parsed without errors")
+					require.Equal(t, testUser.ID, userID)
+				},
+			)
 		})
-	})
 
-	t.Run("several tokens different", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
-			tokenManager := TokenManager{
-				key:         "test-secret-key",
-				alg:         jwt.SigningMethodHS256,
-				accessTTL:   15 * time.Minute,
-				refreshTTL:  24 * time.Hour,
-				refreshRepo: &refreshRepo,
-			}
+		t.Run("not a token", func(t *testing.T) {
+			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
+				func(tokenManager TokenManager) {
+					// Parse the valid token
+					_, err := tokenManager.ParseAccess(t.Context(), "invalid token")
+					require.Error(t, err, "parsing even not a token should return an error")
+				},
+			)
+		})
 
-			pair1, err := tokenManager.GeneratePair(t.Context(), testUser)
-			require.NoError(t, err)
+		t.Run("expired token", func(t *testing.T) {
+			withTx(pg.Pool, t, 1*time.Second, 1*time.Second,
+				func(tokenManager TokenManager) {
+					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
+					require.NoError(t, err)
 
-			pair2, err := tokenManager.GeneratePair(t.Context(), testUser)
-			require.NoError(t, err)
+					// Wait for the token to expire
+					time.Sleep(time.Second)
 
-			assert.NotEqual(t, pair1.Refresh.Value, pair2.Refresh.Value, "refresh tokens should be different")
-			assert.NotEqual(t, pair1.Access.Value, pair2.Access.Value, "access tokens should be different")
+					_, err = tokenManager.ParseAccess(t.Context(), pair.Access.Value)
+					require.Error(t, err, "token has to become expired")
+				},
+			)
+		})
+
+		t.Run("not signed token", func(t *testing.T) {
+			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
+				func(tokenManager TokenManager) {
+					// Create valid but unsigned token
+					token := jwt.NewWithClaims(
+						jwt.SigningMethodNone,
+						AccessTokenClaims{
+							RegisteredClaims: jwt.RegisteredClaims{
+								ID:        uuid.NewString(),
+								IssuedAt:  jwt.NewNumericDate(time.Now()),
+								ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
+							},
+							UserID: testUser.ID,
+						},
+					)
+					access, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+					require.NoError(t, err)
+
+					_, err = tokenManager.ParseAccess(t.Context(), access)
+					require.Error(t, err, "Valid token with empty alg must fail")
+				},
+			)
 		})
 	})
 }
