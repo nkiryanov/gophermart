@@ -32,11 +32,6 @@ type AuthService interface {
 	ReadRefreshToken(r *http.Request) (string, error)
 }
 
-type LoginRequest struct {
-	Login    string `json:"login" validate:"required,min=2,max=50"`
-	Password string `json:"password" validate:"required,min=8"`
-}
-
 type AuthHandler struct {
 	auth AuthService
 }
@@ -55,11 +50,15 @@ func (h *AuthHandler) Handler() http.Handler {
 }
 
 func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
+	type RegisterRequest struct {
+		Login    string `json:"login" validate:"required,min=2,max=50"`
+		Password string `json:"password" validate:"required,min=8"`
+	}
 	type RegisterSuccessResponse struct {
 		Message string `json:"message"`
 	}
 
-	data, err := render.BindAndValidate[LoginRequest](w, r)
+	data, err := render.BindAndValidate[RegisterRequest](w, r)
 	if err != nil {
 		// Consider to log errors here
 		return
@@ -69,7 +68,7 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, apperrors.ErrUserAlreadyExists):
-			render.ServiceError(w, "User not found", http.StatusConflict)
+			render.ServiceError(w, "User already exists", http.StatusConflict)
 		default:
 			render.ServiceError(w, "Internal server error", http.StatusInternalServerError)
 		}
@@ -81,6 +80,10 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
+	type LoginRequest struct {
+		Login    string `json:"login" validate:"required"`
+		Password string `json:"password" validate:"required"`
+	}
 	type LoginSuccessResponse struct {
 		Message string `json:"message"`
 	}
@@ -121,7 +124,7 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 		// Consider to log errors here
 		switch {
 		case errors.Is(err, apperrors.ErrRefreshTokenExpired):
-			render.ServiceError(w, "Refresh token not expired", http.StatusUnauthorized)
+			render.ServiceError(w, "Refresh token expired", http.StatusUnauthorized)
 		default:
 			render.ServiceError(w, "Refresh token not found", http.StatusUnauthorized)
 		}

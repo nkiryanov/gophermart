@@ -30,7 +30,7 @@ func Test_Auth(t *testing.T) {
 	// Rollback transaction when test stops
 	withAuthTx := func(dbpool *pgxpool.Pool, t *testing.T, fn func(s *AuthService)) {
 		testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
-			s, err := NewAuthService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
+			s, err := NewService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
 			require.NoError(t, err, "auth service could't be started", err)
 
 			fn(s)
@@ -149,7 +149,7 @@ func Test_Auth(t *testing.T) {
 				RefreshTokenTTL: 100 * time.Millisecond, // Set refresh token expiration time very low
 			}
 
-			s, err := NewAuthService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
+			s, err := NewService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
 			require.NoError(t, err, "auth service could't be started", err)
 
 			// Register user and get token pair
