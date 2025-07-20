@@ -17,8 +17,9 @@ type AuthMiddleware struct {
 	authService authService
 }
 
-func NewAuth(authService authService) *AuthMiddleware {
-	return &AuthMiddleware{authService: authService}
+func NewAuth(authService authService) func(next http.Handler) http.Handler {
+	m := AuthMiddleware{authService: authService}
+	return m.Auth
 }
 
 func (m *AuthMiddleware) Auth(next http.Handler) http.Handler {

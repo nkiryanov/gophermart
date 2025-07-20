@@ -27,7 +27,7 @@ type authService interface {
 	RefreshPair(ctx context.Context, refresh string) (models.TokenPair, error)
 
 	// Set auth tokens (access, refresh) to response
-	WriteTokenPair(ctx context.Context, w http.ResponseWriter, pair models.TokenPair)
+	SetTokenPairToResponse(w http.ResponseWriter, pair models.TokenPair)
 
 	// Get refresh token from request
 	GetRefreshString(r *http.Request) (string, error)
@@ -77,7 +77,7 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.authService.WriteTokenPair(r.Context(), w, pair)
+	h.authService.SetTokenPairToResponse(w, pair)
 	render.JSON(w, RegisterSuccessResponse{Message: "User registered successfully"})
 }
 
@@ -108,7 +108,7 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.authService.WriteTokenPair(r.Context(), w, pair)
+	h.authService.SetTokenPairToResponse(w, pair)
 	render.JSON(w, LoginSuccessResponse{Message: "User logged in successfully"})
 }
 
@@ -135,6 +135,6 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.authService.WriteTokenPair(r.Context(), w, pair)
+	h.authService.SetTokenPairToResponse(w, pair)
 	render.JSON(w, RefreshSuccessResponse{Message: "Tokens refreshed successfully"})
 }

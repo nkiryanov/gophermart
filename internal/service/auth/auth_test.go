@@ -180,14 +180,14 @@ func Test_Auth(t *testing.T) {
 		})
 	})
 
-	t.Run("WriteTokenPair", func(t *testing.T) {
+	t.Run("SetTokenPairToResponse", func(t *testing.T) {
 		withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 			// Create new valid token pair
 			pair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 			require.NoError(t, err)
 
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				s.WriteTokenPair(r.Context(), w, pair)
+				s.SetTokenPairToResponse(w, pair)
 				w.WriteHeader(http.StatusOK)
 				_, err := w.Write([]byte("ok"))
 				require.NoError(t, err)
