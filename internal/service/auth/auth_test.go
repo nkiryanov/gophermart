@@ -214,4 +214,122 @@ func Test_Auth(t *testing.T) {
 			require.Equal(t, "Bearer "+pair.Access.Value, resp.Header.Get("Authorization"), "Authorization header should be set with access token")
 		})
 	})
+
+	t.Run("GetRefreshString", func(t *testing.T) {
+		withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				token, err := s.GetRefreshString(r)
+				if err != nil {
+					http.Error(w, "fuck off", http.StatusBadRequest)
+					return
+				}
+
+				w.WriteHeader(http.StatusOK)
+				_, err = w.Write([]byte(token))
+				require.NoError(t, err, "should write refresh token to response")
+			}))
+
+			t.Run("ok if refresh cookie", func(t *testing.T) {
+				req, err := http.NewRequest(http.MethodGet, srv.URL+"/test", nil)
+				require.NoError(t, err, "should create request without errors")
+				req.AddCookie(&http.Cookie{Name: s.refreshCookieName, Value: "test-refresh-token"})
+
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err, "should send request without errors")
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err, "should read response body without errors")
+				defer func() { _ = resp.Body.Close() }()
+
+				require.Equal(t, http.StatusOK, resp.StatusCode, "should return 200 OK status")
+				require.Equal(t, "test-refresh-token", string(body))
+			})
+
+			t.Run("fail if no cookie", func(t *testing.T) {
+				req, err := http.NewRequest(http.MethodGet, srv.URL+"/test", nil)
+				require.NoError(t, err, "should create request without errors")
+
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err, "should send request without errors")
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err, "should read response body without errors")
+				defer func() { _ = resp.Body.Close() }()
+
+				require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+				require.Equal(t, "fuck off\n", string(body))
+			})
+		})
+	})
+
+	t.Run("Auth", func(t *testing.T) {
+		withTx(pg.Pool, time.Second, time.Hour, t, func(s *AuthService) {
+			_, err := s.Register(t.Context(), "nk", "pwd")
+			require.NoError(t, err)
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				user, err := s.Auth(t.Context(), r)
+				if err != nil {
+					http.Error(w, "fuck off", http.StatusBadRequest)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				_, err = w.Write([]byte(user.Username))
+				require.NoError(t, err, "should write refresh token to response")
+			}))
+			defer srv.Close()
+
+			t.Run("ok if token valid", func(t *testing.T) {
+				pair, err := s.Login(t.Context(), "nk", "pwd")
+				require.NoError(t, err)
+
+				req, err := http.NewRequest(http.MethodGet, srv.URL+"/test", nil)
+				require.NoError(t, err)
+				req.Header.Set("Authorization", "Bearer "+pair.Access.Value)
+
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				defer func() { _ = resp.Body.Close() }()
+
+				require.Equal(t, http.StatusOK, resp.StatusCode)
+				require.Equal(t, "nk", string(body))
+			})
+
+			t.Run("fail if invalid scheme", func(t *testing.T) {
+				pair, err := s.Login(t.Context(), "nk", "pwd")
+				require.NoError(t, err)
+
+				// Send request with invalid auth scheme (e.g. "JWT" instead of "Bearer")
+				req, err := http.NewRequest(http.MethodGet, srv.URL+"/test", nil)
+				require.NoError(t, err)
+				req.Header.Set("Authorization", "JWT "+pair.Access.Value)
+
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				defer func() { _ = resp.Body.Close() }()
+
+				require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+				require.Equal(t, "fuck off\n", string(body))
+			})
+
+			t.Run("fail if token invalid", func(t *testing.T) {
+				req, err := http.NewRequest(http.MethodGet, srv.URL+"/test", nil)
+				require.NoError(t, err)
+				req.Header.Set("Authorization", "Bearer not-a-token")
+
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				defer func() { _ = resp.Body.Close() }()
+
+				require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+				require.Equal(t, "fuck off\n", string(body))
+			})
+
+		})
+	})
+
 }
