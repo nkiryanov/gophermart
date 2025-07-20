@@ -5,7 +5,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/shopspring/decimal"
 )
+
+type Repos struct {
+	UserRepo    UserRepo
+	RefreshRepo RefreshTokenRepo
+	OrderRepo   OrderRepo
+}
 
 // User repository interface
 type UserRepo interface {
@@ -34,4 +41,18 @@ type RefreshTokenRepo interface {
 	// It would be good idea to add methods
 	// Delete expired tokens
 	// Set tokens revoked for user (or something like that)
+}
+
+// Options to create order with
+type OrderOption func(*models.Order)
+
+func WithOrderStatus(s string) OrderOption {
+	return func(o *models.Order) { o.Status = s }
+}
+func WithOrderAccrual(d decimal.Decimal) OrderOption {
+	return func(o *models.Order) { o.Accrual = d }
+}
+
+type OrderRepo interface {
+	CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...OrderOption) (models.Order, error)
 }

@@ -18,13 +18,13 @@ type UserRepo struct {
 }
 
 const createUser = `-- name: CreateUser
-INSERT INTO users (id, username, password_hash)
-VALUES ($1, $2, $3)
+INSERT INTO users (username, password_hash)
+VALUES ($1, $2)
 RETURNING id, created_at, username, password_hash
 `
 
 func (r *UserRepo) CreateUser(ctx context.Context, username string, hashedPassword string) (models.User, error) {
-	rows, _ := r.DB.Query(ctx, createUser, uuid.New(), username, hashedPassword)
+	rows, _ := r.DB.Query(ctx, createUser, username, hashedPassword)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
 	if err != nil {
