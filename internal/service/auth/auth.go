@@ -161,11 +161,27 @@ func (s *AuthService) RefreshPair(ctx context.Context, refresh string) (models.T
 	return pair, nil
 }
 
-// Write valid token pair to response
+// Set valid token pair to response
 // It actually sets access token to header and refresh token to cookie
-func (s *AuthService) WriteTokenPair(ctx context.Context, w http.ResponseWriter, pair models.TokenPair) {
+func (s *AuthService) SetTokenPairToResponse(w http.ResponseWriter, pair models.TokenPair) {
 	w.Header().Set(s.accessHeaderName, fmt.Sprintf("%s %s", s.accessAuthScheme, pair.Access.Value))
 	http.SetCookie(w, &http.Cookie{
+		Name:     s.refreshCookieName,
+		Value:    pair.Refresh.Value,
+		Path:     "/",
+		MaxAge:   int(time.Until(pair.Refresh.ExpiresAt).Seconds()),
+		Expires:  pair.Refresh.ExpiresAt,
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// Set valid token pair to request
+// It actually sets access token to header and refresh token to cookie
+func (s *AuthService) SetTokenPairToRequest(r *http.Request, pair models.TokenPair) {
+	r.Header.Set(s.accessHeaderName, fmt.Sprintf("%s %s", s.accessAuthScheme, pair.Access.Value))
+	r.AddCookie(&http.Cookie{
 		Name:     s.refreshCookieName,
 		Value:    pair.Refresh.Value,
 		Path:     "/",

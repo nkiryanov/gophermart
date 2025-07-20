@@ -7,12 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/nkiryanov/gophermart/internal/db"
 	"github.com/nkiryanov/gophermart/internal/handlers"
 	"github.com/nkiryanov/gophermart/internal/handlers/middleware"
-	"github.com/nkiryanov/gophermart/internal/handlers/render"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
@@ -56,21 +53,7 @@ func NewServerApp(ctx context.Context) (*ServerApp, error) {
 	authHandler := handlers.NewAuth(authService)
 	authMiddleware := middleware.NewAuth(authService)
 
-	mux := http.NewServeMux()
-	mux.Handle("/auth/", http.StripPrefix("/auth", authHandler.Handler()))
-	mux.Handle("/hello", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Hello, Gopher!"))
-	}))
-	mux.Handle("/me", authMiddleware.Auth(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, _ := handlers.UserFromContext(r.Context())
-			render.JSON(w, struct {
-				ID       uuid.UUID `json:"id"`
-				Username string    `json:"username"`
-			}{ID: user.ID, Username: user.Username})
-		}),
-	))
+	mux := handlers.NewRouter(authHandler, authMiddleware)
 
 	return &ServerApp{
 		ListenAddr: ListenAddr,

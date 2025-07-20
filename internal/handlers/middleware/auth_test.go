@@ -37,11 +37,12 @@ func TestAuthMiddleware_Auth(t *testing.T) {
 
 	t.Run("auth ok", func(t *testing.T) {
 		// Middleware that always return ok
-		middleware := NewAuth(authFunc(func(ctx context.Context, r *http.Request) (models.User, error) {
+		alwaysOkService := authFunc(func(ctx context.Context, r *http.Request) (models.User, error) {
 			return models.User{Username: "test-user"}, nil
-		}))
+		})
+		middleware := NewAuth(alwaysOkService)
 
-		srv := httptest.NewServer(middleware.Auth(handler))
+		srv := httptest.NewServer(middleware(handler))
 		defer srv.Close()
 
 		resp, err := http.Get(srv.URL + "/test")
@@ -56,11 +57,12 @@ func TestAuthMiddleware_Auth(t *testing.T) {
 
 	t.Run("auth fail", func(t *testing.T) {
 		// Middleware that always fails
-		middleware := NewAuth(authFunc(func(ctx context.Context, r *http.Request) (models.User, error) {
-			return models.User{}, errors.New("fuck off!")
-		}))
+		alwaysFailAuthService := authFunc(func(ctx context.Context, r *http.Request) (models.User, error) {
+			return models.User{}, errors.New("auth failed")
+		})
+		middleware := NewAuth(alwaysFailAuthService)
 
-		srv := httptest.NewServer(middleware.Auth(handler))
+		srv := httptest.NewServer(middleware(handler))
 		defer srv.Close()
 
 		resp, err := http.Get(srv.URL + "/test")

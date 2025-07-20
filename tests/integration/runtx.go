@@ -1,0 +1,52 @@
+package integration
+
+import (
+	"net/http/httptest"
+	"testing"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/nkiryanov/gophermart/internal/handlers"
+	"github.com/nkiryanov/gophermart/internal/handlers/middleware"
+	"github.com/nkiryanov/gophermart/internal/repository/postgres"
+	"github.com/nkiryanov/gophermart/internal/service/auth"
+	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
+	"github.com/nkiryanov/gophermart/internal/testutil"
+)
+
+type Services struct {
+	AuthService *auth.AuthService
+}
+
+func RunTx(dbpool *pgxpool.Pool, t *testing.T, fn func(srvURL string, services Services)) {
+	testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
+		// Initialize repositories
+		userRepo := &postgres.UserRepo{DB: tx}
+		refreshRepo := &postgres.RefreshTokenRepo{DB: tx}
+
+		// Initialize services
+		tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: "test-secret"}, refreshRepo)
+		require.NoError(t, err, "token manager should be created without errors")
+
+		s, err := auth.NewService(auth.Config{}, tokenManager, userRepo)
+		require.NoError(t, err, "auth service starting error", err)
+
+		// Initializer handlers
+		authHandler := handlers.NewAuth(s)
+		authMiddleware := middleware.NewAuth(s)
+
+		// Complete all together as router
+		router := handlers.NewRouter(authHandler, authMiddleware)
+
+		// Run http server with the router in transaction
+		srv := httptest.NewServer(router)
+		defer srv.Close()
+
+		fn(srv.URL, Services{
+			AuthService: s,
+		})
+	})
+}
