@@ -1,9 +1,10 @@
-package auth
+package tokenmanager
 
 import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,9 +15,31 @@ import (
 	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
+const (
+	defaultAccessTokenTTL  = 15 * time.Minute
+	defaultSigningMethod   = "HS256"
+	defaultRefreshTokenTTL = 24 * time.Hour
+)
+
 type AccessTokenClaims struct {
 	jwt.RegisteredClaims
 	UserID uuid.UUID `json:"uid"`
+}
+
+// Token manager with sensible default
+type Config struct {
+	// Secret key to sign access token
+	// Required to be set
+	SecretKey string
+
+	// JWT MAC (Message Authentication Code) algorithm
+	// If not set than default is used
+	Alg string
+
+	// Access and refresh token lifetimes
+	// If not set than default is used
+	AccessTTL  time.Duration
+	RefreshTTL time.Duration
 }
 
 type TokenManager struct {
@@ -24,7 +47,7 @@ type TokenManager struct {
 	key string
 
 	// JWT MAC (Message Authentication Code) algorithm
-	alg string
+	alg jwt.SigningMethod
 
 	// Access and refresh token lifetimes
 	accessTTL  time.Duration
@@ -34,7 +57,33 @@ type TokenManager struct {
 	refreshRepo repository.RefreshTokenRepo
 }
 
-func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (models.TokenPair, error) {
+func New(cfg Config, refreshRepo repository.RefreshTokenRepo) (*TokenManager, error) {
+	if cfg.SecretKey == "" {
+		return nil, errors.New("secret key must not be empty")
+	}
+
+	if cfg.Alg == "" {
+		cfg.Alg = defaultSigningMethod
+	}
+
+	setDefaultDuration := func(field *time.Duration, def time.Duration) {
+		if *field == 0 {
+			*field = def
+		}
+	}
+	setDefaultDuration(&cfg.AccessTTL, defaultAccessTokenTTL)
+	setDefaultDuration(&cfg.RefreshTTL, defaultRefreshTokenTTL)
+
+	return &TokenManager{
+		key:         cfg.SecretKey,
+		alg:         jwt.GetSigningMethod(cfg.Alg),
+		accessTTL:   cfg.AccessTTL,
+		refreshTTL:  cfg.RefreshTTL,
+		refreshRepo: refreshRepo,
+	}, nil
+}
+
+func (m *TokenManager) GeneratePair(ctx context.Context, user models.User) (models.TokenPair, error) {
 	var pair models.TokenPair
 	now := time.Now().Truncate(time.Second)
 	accessExpiresAt := now.Add(m.accessTTL)
@@ -42,7 +91,7 @@ func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (model
 
 	// Generate JWT access token decoded as string
 	accessToken := jwt.NewWithClaims(
-		jwt.GetSigningMethod(m.alg),
+		m.alg,
 		AccessTokenClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				ID:        uuid.NewString(),
@@ -84,7 +133,7 @@ func (m TokenManager) GeneratePair(ctx context.Context, user models.User) (model
 }
 
 // Use token: return if it valid and mark as used
-func (m TokenManager) UseRefreshToken(ctx context.Context, refresh string) (models.RefreshToken, error) {
+func (m *TokenManager) UseRefresh(ctx context.Context, refresh string) (models.RefreshToken, error) {
 	token, err := m.refreshRepo.GetAndMarkUsed(ctx, refresh)
 	if err != nil {
 		return token, fmt.Errorf("error while marking token used. Err: %w", err)
@@ -95,4 +144,23 @@ func (m TokenManager) UseRefreshToken(ctx context.Context, refresh string) (mode
 	}
 
 	return token, nil
+}
+
+// Parse and validate access token
+func (m *TokenManager) ParseAccess(ctx context.Context, access string) (userID uuid.UUID, err error) {
+	claims := &AccessTokenClaims{}
+
+	_, err = jwt.ParseWithClaims(
+		access,
+		claims,
+		func(t *jwt.Token) (any, error) {
+			return []byte(m.key), nil
+		},
+		jwt.WithValidMethods([]string{m.alg.Alg()}),
+	)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("error while parsing or validating token. Err: %w", err)
+	}
+
+	return claims.UserID, nil
 }

@@ -10,8 +10,9 @@ import (
 	"github.com/nkiryanov/gophermart/internal/models"
 )
 
-// Auth service
-type AuthService interface {
+const ()
+
+type authService interface {
 	// Register user with username and password
 	// Has to return apperrors.ErrUserAlreadyExists if user already exists
 	Register(ctx context.Context, username string, password string) (models.TokenPair, error)
@@ -23,21 +24,21 @@ type AuthService interface {
 	// Refresh tokens using refresh token
 	// If token expired: has to return apperrors.ErrRefreshTokenExpired
 	// If token not found: has to return apperrors.ErrRefreshTokenNotFound
-	Refresh(ctx context.Context, refresh string) (models.TokenPair, error)
+	RefreshPair(ctx context.Context, refresh string) (models.TokenPair, error)
 
-	// SetAuth auth tokens (access, refresh, csrf if any)
-	SetAuth(ctx context.Context, w http.ResponseWriter, tokens models.TokenPair)
+	// Set auth tokens (access, refresh) to response
+	WriteTokenPair(ctx context.Context, w http.ResponseWriter, pair models.TokenPair)
 
-	// Symmetric to 'SetAuth': extracts refresh token form request
-	ReadRefreshToken(r *http.Request) (string, error)
+	// Get refresh token from request
+	GetRefreshString(r *http.Request) (string, error)
 }
 
 type AuthHandler struct {
-	auth AuthService
+	authService authService
 }
 
-func NewAuthHandler(auth AuthService) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewAuth(authService authService) *AuthHandler {
+	return &AuthHandler{authService: authService}
 }
 
 func (h *AuthHandler) Handler() http.Handler {
@@ -49,6 +50,7 @@ func (h *AuthHandler) Handler() http.Handler {
 	return mux
 }
 
+// Register user with username and password
 func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 	type RegisterRequest struct {
 		Login    string `json:"login" validate:"required,min=2,max=50"`
@@ -64,7 +66,7 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pair, err := h.auth.Register(r.Context(), data.Login, data.Password)
+	pair, err := h.authService.Register(r.Context(), data.Login, data.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, apperrors.ErrUserAlreadyExists):
@@ -75,10 +77,11 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.auth.SetAuth(r.Context(), w, pair)
+	h.authService.WriteTokenPair(r.Context(), w, pair)
 	render.JSON(w, RegisterSuccessResponse{Message: "User registered successfully"})
 }
 
+// Login user with username and password
 func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 	type LoginRequest struct {
 		Login    string `json:"login" validate:"required"`
@@ -94,7 +97,7 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pair, err := h.auth.Login(r.Context(), data.Login, data.Password)
+	pair, err := h.authService.Login(r.Context(), data.Login, data.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, apperrors.ErrUserNotFound):
@@ -105,21 +108,22 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.auth.SetAuth(r.Context(), w, pair)
+	h.authService.WriteTokenPair(r.Context(), w, pair)
 	render.JSON(w, LoginSuccessResponse{Message: "User logged in successfully"})
 }
 
+// Refresh token pair using refresh token
 func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 	type RefreshSuccessResponse struct {
 		Message string `json:"message"`
 	}
 
-	refresh, err := h.auth.ReadRefreshToken(r)
+	refresh, err := h.authService.GetRefreshString(r)
 	if err != nil {
 		render.ServiceError(w, "Refresh token not found", http.StatusUnauthorized)
 	}
 
-	pair, err := h.auth.Refresh(r.Context(), refresh)
+	pair, err := h.authService.RefreshPair(r.Context(), refresh)
 	if err != nil {
 		// Consider to log errors here
 		switch {
@@ -131,6 +135,6 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.auth.SetAuth(r.Context(), w, pair)
+	h.authService.WriteTokenPair(r.Context(), w, pair)
 	render.JSON(w, RefreshSuccessResponse{Message: "Tokens refreshed successfully"})
 }

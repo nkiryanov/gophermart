@@ -14,29 +14,31 @@ import (
 
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth"
+	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
-func TestAuthHandler(t *testing.T) {
+func Test_AuthHandler(t *testing.T) {
 	t.Parallel()
 
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	// Settings with sensible defaults
-	cfg := auth.AuthServiceConfig{
-		SecretKey: "secret",
-	}
-
 	// Run http server and attach auth handlers
 	// Production AuthService will be used
 	withTx := func(dbpool *pgxpool.Pool, t *testing.T, fn func(url string, auth *auth.AuthService)) {
 		testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
+			userRepo := &postgres.UserRepo{DB: tx}
+			refreshRepo := &postgres.RefreshTokenRepo{DB: tx}
+
+			tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: "test-secret"}, refreshRepo)
+			require.NoError(t, err, "token manager should be created without errors")
+
 			// Initialize production auth service
-			s, err := auth.NewService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
+			s, err := auth.NewService(auth.Config{}, tokenManager, userRepo)
 			require.NoError(t, err, "auth service starting error", err)
 
-			h := NewAuthHandler(s)
+			h := NewAuth(s)
 			srv := httptest.NewServer(h.Handler())
 			defer srv.Close()
 
