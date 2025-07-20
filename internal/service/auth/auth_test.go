@@ -10,6 +10,7 @@ import (
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
+	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
@@ -19,27 +20,43 @@ func Test_Auth(t *testing.T) {
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	cfg := AuthServiceConfig{
-		SecretKey:       "secret",
-		Hasher:          BcryptHasher{},
-		AccessTokenTTL:  5 * time.Minute,
-		RefreshTokenTTL: 24 * time.Hour,
-	}
-
 	// Begin new db transaction and create new AuthService
 	// Rollback transaction when test stops
-	withTx := func(dbpool *pgxpool.Pool, t *testing.T, fn func(s *AuthService)) {
+	withTx := func(dbpool *pgxpool.Pool, accessTTL time.Duration, refreshTTL time.Duration, t *testing.T, fn func(s *AuthService)) {
 		testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
-			s, err := NewService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
+			userRepo := &postgres.UserRepo{DB: tx}
+			refreshRepo := &postgres.RefreshTokenRepo{DB: tx}
+
+			tokenManager, err := tokenmanager.New(
+				tokenmanager.Config{
+					SecretKey:  "test-secret-key",
+					AccessTTL:  accessTTL,
+					RefreshTTL: refreshTTL,
+				},
+				refreshRepo,
+			)
+			require.NoError(t, err, "token manager should be created without errors")
+
+			s, err := NewService(Config{}, tokenManager, userRepo)
 			require.NoError(t, err, "auth service could't be started", err)
 
 			fn(s)
 		})
 	}
 
+	t.Run("new auth service defaults", func(t *testing.T) {
+		s, err := NewService(Config{}, nil, nil)
+		require.NoError(t, err, "auth service should be created without errors")
+
+		require.Equal(t, defaultAccessHeaderName, s.accessHeaderName, "default access header name should be set")
+		require.Equal(t, defaultAccessAuthScheme, s.accessAuthScheme, "default access auth")
+		require.Equal(t, defaultRefreshCookieName, s.refreshCookieName, "default refresh cookie name should be set")
+		require.Equal(t, BcryptHasher{}, s.hasher, "default hasher should be set to BcryptHasher")
+	})
+
 	t.Run("Register", func(t *testing.T) {
 		t.Run("new user ok", func(t *testing.T) {
-			withTx(pg.Pool, t, func(s *AuthService) {
+			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				pair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 
 				require.NoError(t, err, "registering new user should be ok")
@@ -49,7 +66,7 @@ func Test_Auth(t *testing.T) {
 		})
 
 		t.Run("fail if user exists", func(t *testing.T) {
-			withTx(pg.Pool, t, func(s *AuthService) {
+			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				_, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err, "no error has should happen if user not exists")
 
@@ -63,7 +80,7 @@ func Test_Auth(t *testing.T) {
 
 	t.Run("Login", func(t *testing.T) {
 		t.Run("existing user ok", func(t *testing.T) {
-			withTx(pg.Pool, t, func(s *AuthService) {
+			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				_, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err)
 
@@ -97,7 +114,7 @@ func Test_Auth(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				withTx(pg.Pool, t, func(s *AuthService) {
+				withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 					_, err := s.Register(t.Context(), "nkiryanov", "pwd")
 					require.NoError(t, err)
 
@@ -111,15 +128,15 @@ func Test_Auth(t *testing.T) {
 		}
 	})
 
-	t.Run("Refresh", func(t *testing.T) {
+	t.Run("RefreshPair", func(t *testing.T) {
 		t.Run("refresh once ok", func(t *testing.T) {
-			withTx(pg.Pool, t, func(s *AuthService) {
+			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				// Register user and get initial token pair
 				initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err)
 
 				// Use refresh token to get new token pair
-				newPair, err := s.Refresh(t.Context(), initialPair.Refresh.Value)
+				newPair, err := s.RefreshPair(t.Context(), initialPair.Refresh.Value)
 
 				require.NoError(t, err)
 				require.NotEqual(t, initialPair.Access.Value, newPair.Access.Value, "new access token should be different")
@@ -127,43 +144,33 @@ func Test_Auth(t *testing.T) {
 			})
 		})
 
-		t.Run("fail if user", func(t *testing.T) {
-			withTx(pg.Pool, t, func(s *AuthService) {
+		t.Run("fail if used once", func(t *testing.T) {
+			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				// Register user and get token pair
 				initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err)
 
 				// Use refresh token once - should work
-				_, err = s.Refresh(t.Context(), initialPair.Refresh.Value)
+				_, err = s.RefreshPair(t.Context(), initialPair.Refresh.Value)
 				require.NoError(t, err)
 
 				// Try to use same refresh token again - should fail
-				_, err = s.Refresh(t.Context(), initialPair.Refresh.Value)
+				_, err = s.RefreshPair(t.Context(), initialPair.Refresh.Value)
 				require.Error(t, err)
 				require.ErrorIs(t, err, apperrors.ErrRefreshTokenIsUsed, "should return error if token already used")
 			})
 		})
 
 		t.Run("fail if expired", func(t *testing.T) {
-			testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-				cfg := AuthServiceConfig{
-					SecretKey:       "secret",
-					Hasher:          BcryptHasher{},
-					AccessTokenTTL:  50 * time.Millisecond,
-					RefreshTokenTTL: 100 * time.Millisecond, // Set refresh token expiration time very low
-				}
-
-				s, err := NewService(cfg, &postgres.UserRepo{DB: tx}, &postgres.RefreshTokenRepo{DB: tx})
-				require.NoError(t, err, "auth service could't be started", err)
-
+			withTx(pg.Pool, 1*time.Second, 1*time.Second, t, func(s *AuthService) {
 				// Register user and get token pair
 				initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err)
 
 				// Move time forward to make sure refresh token is expired
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(time.Second)
 
-				_, err = s.Refresh(t.Context(), initialPair.Refresh.Value)
+				_, err = s.RefreshPair(t.Context(), initialPair.Refresh.Value)
 				require.Error(t, err)
 				require.ErrorIs(t, err, apperrors.ErrRefreshTokenExpired, "should return error if token expired")
 			})

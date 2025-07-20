@@ -1,4 +1,4 @@
-package auth
+package tokenmanager
 
 import (
 	"testing"
@@ -37,25 +37,36 @@ func Test_TokenManager(t *testing.T) {
 		HashedPassword: "hashed_password",
 	}
 
-	withTx := func(dbpool *pgxpool.Pool, t *testing.T, accessTTL time.Duration, refreshTTL time.Duration, fn func(m TokenManager)) {
+	withTx := func(dbpool *pgxpool.Pool, t *testing.T, accessTTL time.Duration, refreshTTL time.Duration, fn func(m *TokenManager)) {
 		testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
-			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
-			tokenManager := TokenManager{
-				key:         "test-secret-key",
-				alg:         jwt.SigningMethodHS256,
-				accessTTL:   accessTTL,
-				refreshTTL:  refreshTTL,
-				refreshRepo: &refreshRepo,
+			cfg := Config{
+				SecretKey:  "test-secret-key",
+				AccessTTL:  accessTTL,
+				RefreshTTL: refreshTTL,
 			}
+			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
+
+			tokenManager, err := New(cfg, &refreshRepo)
+			require.NoError(t, err, "token manager should be created without errors")
 
 			fn(tokenManager)
 		})
 	}
 
+	t.Run("new defaults", func(t *testing.T) {
+		m, err := New(Config{SecretKey: "secret"}, nil)
+		require.NoError(t, err, "token manager should be created without errors")
+
+		require.Equal(t, "secret", m.key, "secret key should be set")
+		require.Equal(t, defaultAccessTokenTTL, m.accessTTL, "default access token TTL should be set")
+		require.Equal(t, defaultRefreshTokenTTL, m.refreshTTL, "default refresh token TTL")
+		require.Equal(t, defaultSigningMethod, m.alg.Alg(), "default signing method should be set")
+	})
+
 	t.Run("GeneratePair", func(t *testing.T) {
 		t.Run("return token pair", func(t *testing.T) {
 			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 
 					require.NoError(t, err)
@@ -70,7 +81,7 @@ func Test_TokenManager(t *testing.T) {
 
 		t.Run("access claims", func(t *testing.T) {
 			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 					require.NoError(t, err)
 
@@ -95,7 +106,7 @@ func Test_TokenManager(t *testing.T) {
 
 		t.Run("generate different tokens", func(t *testing.T) {
 			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					pair1, err := tokenManager.GeneratePair(t.Context(), testUser)
 					require.NoError(t, err)
 
@@ -109,14 +120,14 @@ func Test_TokenManager(t *testing.T) {
 		})
 	})
 
-	t.Run("UseRefreshToken", func(t *testing.T) {
+	t.Run("UseRefresh", func(t *testing.T) {
 		t.Run("use token once", func(t *testing.T) {
 			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 					require.NoError(t, err)
 
-					token, err := tokenManager.UseRefreshToken(t.Context(), pair.Refresh.Value)
+					token, err := tokenManager.UseRefresh(t.Context(), pair.Refresh.Value)
 					require.NoError(t, err, "using refresh token should not return an error")
 
 					require.Equal(t, testUser.ID, token.UserID)
@@ -127,16 +138,16 @@ func Test_TokenManager(t *testing.T) {
 
 		t.Run("use token twice", func(t *testing.T) {
 			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 					require.NoError(t, err)
 
 					// Use the token once
-					_, err = tokenManager.UseRefreshToken(t.Context(), pair.Refresh.Value)
+					_, err = tokenManager.UseRefresh(t.Context(), pair.Refresh.Value)
 					require.NoError(t, err, "using refresh token should not return an error")
 
 					// Try to use the same token again
-					_, err = tokenManager.UseRefreshToken(t.Context(), pair.Refresh.Value)
+					_, err = tokenManager.UseRefresh(t.Context(), pair.Refresh.Value)
 					require.Error(t, err, "using the same refresh token again should return an error")
 				},
 			)
@@ -144,7 +155,7 @@ func Test_TokenManager(t *testing.T) {
 
 		t.Run("use expired token", func(t *testing.T) {
 			withTx(pg.Pool, t, 1*time.Second, 1*time.Second,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 					require.NoError(t, err)
 
@@ -152,7 +163,7 @@ func Test_TokenManager(t *testing.T) {
 					time.Sleep(time.Second)
 
 					// Verify refresh token exists in database
-					_, err = tokenManager.UseRefreshToken(t.Context(), pair.Refresh.Value)
+					_, err = tokenManager.UseRefresh(t.Context(), pair.Refresh.Value)
 					require.Error(t, err, "using expired refresh token should return an error")
 				},
 			)
@@ -162,7 +173,7 @@ func Test_TokenManager(t *testing.T) {
 	t.Run("ParseAccess", func(t *testing.T) {
 		t.Run("valid token", func(t *testing.T) {
 			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 					require.NoError(t, err, "token pair should be generated without errors")
 
@@ -175,7 +186,7 @@ func Test_TokenManager(t *testing.T) {
 
 		t.Run("not a token", func(t *testing.T) {
 			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					// Parse the valid token
 					_, err := tokenManager.ParseAccess(t.Context(), "invalid token")
 					require.Error(t, err, "parsing even not a token should return an error")
@@ -185,7 +196,7 @@ func Test_TokenManager(t *testing.T) {
 
 		t.Run("expired token", func(t *testing.T) {
 			withTx(pg.Pool, t, 1*time.Second, 1*time.Second,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					pair, err := tokenManager.GeneratePair(t.Context(), testUser)
 					require.NoError(t, err)
 
@@ -200,7 +211,7 @@ func Test_TokenManager(t *testing.T) {
 
 		t.Run("not signed token", func(t *testing.T) {
 			withTx(pg.Pool, t, 15*time.Minute, 24*time.Hour,
-				func(tokenManager TokenManager) {
+				func(tokenManager *TokenManager) {
 					// Create valid but unsigned token
 					token := jwt.NewWithClaims(
 						jwt.SigningMethodNone,

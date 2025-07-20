@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
@@ -16,12 +16,8 @@ import (
 )
 
 const (
-	defaultAccessHeaderName = "Authorization"
-	defaultAccessAuthScheme = "Bearer"
-	defaultAccessTokenTTL   = 15 * time.Minute
-	defaultSigningMethod    = "HS256"
-
-	defaultRefreshTokenTTL   = 24 * time.Hour
+	defaultAccessHeaderName  = "Authorization"
+	defaultAccessAuthScheme  = "Bearer"
 	defaultRefreshCookieName = "refreshtoken"
 )
 
@@ -35,21 +31,25 @@ type PasswordHasher interface {
 	Compare(hashedPassword string, password string) error
 }
 
-type AuthServiceConfig struct {
-	// Secret key to sign user access token payload
-	SecretKey string
+type TokenManager interface {
+	// GeneratePair generates access and refresh tokens for user
+	GeneratePair(ctx context.Context, user models.User) (models.TokenPair, error)
 
-	// Hasher to user during user registration or login process
-	Hasher PasswordHasher
+	// UseRefresh marks refresh token as used and returns it
+	UseRefresh(ctx context.Context, refresh string) (models.RefreshToken, error)
 
-	// Access token lifetime, header name, auth scheme (like Bearer)
-	AccessTokenTTL   time.Duration
-	AccessHeaderName string
-	AccessAuthScheme string
+	// ParseAccess parses access token and returns user ID
+	ParseAccess(ctx context.Context, access string) (userID uuid.UUID, err error)
+}
 
-	// Refresh token lifetime, cookie name
-	RefreshTokenTTL   time.Duration
+// AuthService config with sensible defaults
+// All fields are optional: if not set, default values will be used
+type Config struct {
+	AccessHeaderName  string
+	AccessAuthScheme  string
 	RefreshCookieName string
+
+	Hasher PasswordHasher
 }
 
 // Auth service
@@ -59,7 +59,7 @@ type AuthService struct {
 	refreshCookieName string
 
 	// Manager to issue token pairs (access and refresh)
-	token TokenManager
+	tokenManager TokenManager
 
 	// hasher to hash or compare user passwords
 	hasher PasswordHasher
@@ -68,54 +68,28 @@ type AuthService struct {
 	userRepo repository.UserRepo
 }
 
-func NewService(cfg AuthServiceConfig, userRepo repository.UserRepo, refreshRepo repository.RefreshTokenRepo) (*AuthService, error) {
-	if refreshRepo == nil || userRepo == nil {
-		return nil, errors.New("repos must not be nil")
-	}
-
-	if cfg.SecretKey == "" {
-		return nil, errors.New("secret key must not be empty")
-	}
-
-	setDefaultString := func(fld *string, def string) {
-		if *fld == "" {
-			*fld = def
+func NewService(cfg Config, tokenManager TokenManager, userRepo repository.UserRepo) (*AuthService, error) {
+	setDefaultString := func(field *string, def string) {
+		if *field == "" {
+			*field = def
 		}
 	}
-	setDefaultDuration := func(fld *time.Duration, def time.Duration) {
-		if *fld == 0 {
-			*fld = def
-		}
-	}
-
 	setDefaultString(&cfg.AccessHeaderName, defaultAccessHeaderName)
 	setDefaultString(&cfg.AccessAuthScheme, defaultAccessAuthScheme)
 	setDefaultString(&cfg.RefreshCookieName, defaultRefreshCookieName)
-	setDefaultDuration(&cfg.AccessTokenTTL, defaultAccessTokenTTL)
-	setDefaultDuration(&cfg.RefreshTokenTTL, defaultRefreshTokenTTL)
 
 	// Set default bcrypt hasher if not user provided by user
-	hasher := cfg.Hasher
-	if hasher == nil {
-		hasher = BcryptHasher{}
-	}
-
-	tokenManager := TokenManager{
-		key:         cfg.SecretKey,
-		alg:         jwt.GetSigningMethod(defaultSigningMethod),
-		accessTTL:   cfg.AccessTokenTTL,
-		refreshTTL:  cfg.RefreshTokenTTL,
-		refreshRepo: refreshRepo,
+	if cfg.Hasher == nil {
+		cfg.Hasher = BcryptHasher{}
 	}
 
 	return &AuthService{
 		accessHeaderName:  cfg.AccessHeaderName,
 		accessAuthScheme:  cfg.AccessAuthScheme,
 		refreshCookieName: cfg.RefreshCookieName,
-
-		token:    tokenManager,
-		hasher:   hasher,
-		userRepo: userRepo,
+		tokenManager:      tokenManager,
+		hasher:            cfg.Hasher,
+		userRepo:          userRepo,
 	}, nil
 }
 
@@ -132,7 +106,7 @@ func (s *AuthService) Register(ctx context.Context, username string, password st
 		return pair, fmt.Errorf("can't register user. Err: %w", err)
 	}
 
-	pair, err = s.token.GeneratePair(ctx, user)
+	pair, err = s.tokenManager.GeneratePair(ctx, user)
 	if err != nil {
 		return pair, fmt.Errorf("token could not generated, sorry. Err: %w", err)
 	}
@@ -154,7 +128,7 @@ func (s *AuthService) Login(ctx context.Context, username string, password strin
 		return pair, apperrors.ErrUserNotFound
 	}
 
-	pair, err = s.token.GeneratePair(ctx, user)
+	pair, err = s.tokenManager.GeneratePair(ctx, user)
 	if err != nil {
 		return pair, fmt.Errorf("token could not be generated, sorry. Err: %w", err)
 	}
@@ -162,12 +136,13 @@ func (s *AuthService) Login(ctx context.Context, username string, password strin
 	return pair, nil
 }
 
-func (s *AuthService) Refresh(ctx context.Context, refresh string) (models.TokenPair, error) {
+// Refresh token pair with valid refresh token
+func (s *AuthService) RefreshPair(ctx context.Context, refresh string) (models.TokenPair, error) {
 	var pair models.TokenPair
 
 	// Mark token as used
 	// Always fail if token is not valid or not found
-	token, err := s.token.UseRefreshToken(ctx, refresh)
+	token, err := s.tokenManager.UseRefresh(ctx, refresh)
 	if err != nil {
 		return pair, fmt.Errorf("token could not be refreshed. Err: %w", err)
 	}
@@ -178,7 +153,7 @@ func (s *AuthService) Refresh(ctx context.Context, refresh string) (models.Token
 		return pair, fmt.Errorf("token could not be refreshed. Err: %w", err)
 	}
 
-	pair, err = s.token.GeneratePair(ctx, user)
+	pair, err = s.tokenManager.GeneratePair(ctx, user)
 	if err != nil {
 		return pair, fmt.Errorf("token could not generated, sorry. Err: %w", err)
 	}
@@ -186,7 +161,9 @@ func (s *AuthService) Refresh(ctx context.Context, refresh string) (models.Token
 	return pair, nil
 }
 
-func (s *AuthService) SetTokens(ctx context.Context, w http.ResponseWriter, pair models.TokenPair) {
+// Write valid token pair to response
+// It actually sets access token to header and refresh token to cookie
+func (s *AuthService) WriteTokenPair(ctx context.Context, w http.ResponseWriter, pair models.TokenPair) {
 	w.Header().Set(s.accessHeaderName, fmt.Sprintf("%s %s", s.accessAuthScheme, pair.Access.Value))
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.refreshCookieName,
@@ -200,7 +177,8 @@ func (s *AuthService) SetTokens(ctx context.Context, w http.ResponseWriter, pair
 	})
 }
 
-func (s *AuthService) GetRefresh(r *http.Request) (string, error) {
+// Get refresh token from request
+func (s *AuthService) GetRefreshString(r *http.Request) (string, error) {
 	cookie, err := r.Cookie(s.refreshCookieName)
 	if err != nil {
 		return "", fmt.Errorf("can't read refresh token from cookie: %w", err)
@@ -209,6 +187,7 @@ func (s *AuthService) GetRefresh(r *http.Request) (string, error) {
 	return cookie.Value, nil
 }
 
+// Authenticate user using access token from request
 func (s *AuthService) Auth(ctx context.Context, r *http.Request) (models.User, error) {
 	var u models.User
 	var scheme = fmt.Sprintf("%s ", s.accessAuthScheme)
@@ -225,7 +204,7 @@ func (s *AuthService) Auth(ctx context.Context, r *http.Request) (models.User, e
 		return u, errors.New("empty auth token")
 	}
 
-	userID, err := s.token.ParseAccess(ctx, token)
+	userID, err := s.tokenManager.ParseAccess(ctx, token)
 	if err != nil {
 		return u, fmt.Errorf("token is not valid. Err: %w", err)
 	}

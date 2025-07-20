@@ -1,17 +1,22 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/nkiryanov/gophermart/internal/handlers"
-	"github.com/nkiryanov/gophermart/internal/service"
+	"github.com/nkiryanov/gophermart/internal/models"
 )
 
-type AuthMiddleware struct {
-	authService service.Auth
+type authService interface {
+	Auth(ctx context.Context, r *http.Request) (models.User, error)
 }
 
-func NewAuth(authService service.Auth) *AuthMiddleware {
+type AuthMiddleware struct {
+	authService authService
+}
+
+func NewAuth(authService authService) *AuthMiddleware {
 	return &AuthMiddleware{authService: authService}
 }
 
