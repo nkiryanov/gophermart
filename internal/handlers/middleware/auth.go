@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/nkiryanov/gophermart/internal/handlers"
+	"github.com/nkiryanov/gophermart/internal/handlers/render"
 	"github.com/nkiryanov/gophermart/internal/models"
 )
 
@@ -24,7 +25,7 @@ func (m *AuthMiddleware) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, err := m.authService.Auth(r.Context(), r)
 		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			render.ServiceError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		ctx := handlers.NewContextWithUser(r.Context(), user)

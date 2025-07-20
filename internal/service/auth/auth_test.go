@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -174,6 +177,41 @@ func Test_Auth(t *testing.T) {
 				require.Error(t, err)
 				require.ErrorIs(t, err, apperrors.ErrRefreshTokenExpired, "should return error if token expired")
 			})
+		})
+	})
+
+	t.Run("WriteTokenPair", func(t *testing.T) {
+		withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+			// Create new valid token pair
+			pair, err := s.Register(t.Context(), "nkiryanov", "pwd")
+			require.NoError(t, err)
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				s.WriteTokenPair(r.Context(), w, pair)
+				w.WriteHeader(http.StatusOK)
+				_, err := w.Write([]byte("ok"))
+				require.NoError(t, err)
+			}))
+			defer srv.Close()
+
+			resp, err := http.Get(srv.URL + "/test")
+			require.NoError(t, err, "should not return an error when writing token pair")
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err, "should not return an error when reading response body")
+			defer func() { _ = resp.Body.Close() }()
+			require.Equalf(t, http.StatusOK, resp.StatusCode, "not expected code. Body: %s", string(body))
+
+			// Verify refresh token set as cookie
+			require.Equal(t, 1, len(resp.Cookies()))
+			refreshCookie := resp.Cookies()[0]
+			require.Equal(t, s.refreshCookieName, refreshCookie.Name, "cookie name should match expected")
+			require.Equal(t, pair.Refresh.Value, refreshCookie.Value, "cookie value should match refresh token value")
+			require.Equal(t, http.SameSiteStrictMode, refreshCookie.SameSite, "cookie should be SameSite Strict")
+			require.InDelta(t, (24 * time.Hour).Seconds(), refreshCookie.MaxAge, 1, "cookie max age should match refresh TTL with 1 second delta")
+			require.Equal(t, "/", refreshCookie.Path)
+
+			// Verify access token set in Authorization header
+			require.Equal(t, "Bearer "+pair.Access.Value, resp.Header.Get("Authorization"), "Authorization header should be set with access token")
 		})
 	})
 }
