@@ -23,7 +23,9 @@ type Services struct {
 	OrderService *order.OrderService
 }
 
-func RunTx(dbpool *pgxpool.Pool, t *testing.T, fn func(srvURL string, services Services)) {
+// Create db transaction and run server in with that connection (one connection cause one transaction)
+// The created transaction passed to inner function: so, you can safely use testutil.WithTx with it
+func ServeWithTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL string, services Services)) {
 	testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
 		// Initialize repositories
 		userRepo := &postgres.UserRepo{DB: tx}
@@ -55,7 +57,7 @@ func RunTx(dbpool *pgxpool.Pool, t *testing.T, fn func(srvURL string, services S
 		srv := httptest.NewServer(router)
 		defer srv.Close()
 
-		fn(srv.URL, Services{
+		fn(tx, srv.URL, Services{
 			AuthService:  as,
 			OrderService: os,
 		})
