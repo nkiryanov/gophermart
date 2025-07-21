@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 
 	"github.com/jackc/pgx/v5"
@@ -58,7 +60,7 @@ func TestOrders(t *testing.T) {
 					require.NoError(t, err, "order has to be created ok")
 
 					// Crete order second time but with different status
-					_, err = repos.OrderRepo.CreateOrder(t.Context(), "123", user.ID, repository.WithOrderStatus(models.OrderProcessed))
+					_, err = repos.OrderRepo.CreateOrder(t.Context(), "123", user.ID, models.WithOrderStatus(models.OrderProcessed))
 
 					require.Error(t, err, "crating same order must failed")
 					require.ErrorIs(t, err, apperrors.ErrOrderAlreadyExists, "should return well known error")
@@ -73,13 +75,79 @@ func TestOrders(t *testing.T) {
 					require.NoError(t, err)
 
 					// Crete order second time but with different status
-					_, err = repos.OrderRepo.CreateOrder(t.Context(), "123", yaUser.ID, repository.WithOrderStatus(models.OrderProcessed))
+					_, err = repos.OrderRepo.CreateOrder(t.Context(), "123", yaUser.ID, models.WithOrderStatus(models.OrderProcessed))
 
 					require.Error(t, err, "crating same order must failed")
 					require.ErrorIs(t, err, apperrors.ErrOrderNumberTaken, "should return well known error")
 				})
 			})
 
+		})
+	})
+
+	t.Run("ListOrders", func(t *testing.T) {
+		withTx(t, pg.Pool, func(tx pgx.Tx, repos *repository.Repos) {
+			user, err := repos.UserRepo.CreateUser(t.Context(), "user1", "hashedpassword")
+			require.NoError(t, err)
+
+			t.Run("empty list", func(t *testing.T) {
+				withTx(t, tx, func(ttx pgx.Tx, repos *repository.Repos) {
+					orders, err := repos.OrderRepo.ListOrders(t.Context(), user.ID)
+
+					require.NoError(t, err, "listing orders should not fail")
+					require.Empty(t, orders, "orders list should be empty for new user")
+				})
+			})
+
+			t.Run("single order", func(t *testing.T) {
+				withTx(t, tx, func(ttx pgx.Tx, repos *repository.Repos) {
+					createdOrder, err := repos.OrderRepo.CreateOrder(t.Context(), "456", user.ID)
+					require.NoError(t, err)
+
+					orders, err := repos.OrderRepo.ListOrders(t.Context(), user.ID)
+					require.NoError(t, err, "listing orders should not fail")
+
+					require.Len(t, orders, 1, "should return exactly one order")
+					order := orders[0]
+					require.Equal(t, createdOrder.ID, order.ID)
+					require.Equal(t, createdOrder.Number, order.Number)
+					require.Equal(t, createdOrder.UserID, order.UserID)
+					require.Equal(t, createdOrder.Status, order.Status)
+					require.Equal(t, createdOrder.Accrual, order.Accrual)
+				})
+			})
+
+			t.Run("multiple orders", func(t *testing.T) {
+				withTx(t, tx, func(ttx pgx.Tx, repos *repository.Repos) {
+					order, err := repos.OrderRepo.CreateOrder(t.Context(), "111", user.ID)
+					require.NoError(t, err)
+					yaOrder, err := repos.OrderRepo.CreateOrder(t.Context(), "222", user.ID,
+						models.WithOrderStatus(models.OrderProcessed),
+						models.WithOrderAccrual(decimal.RequireFromString("100.50")),
+					)
+					require.NoError(t, err)
+
+					orders, err := repos.OrderRepo.ListOrders(t.Context(), user.ID)
+					require.NoError(t, err, "listing orders should not fail")
+
+					require.Len(t, orders, 2)
+					require.Equal(t, yaOrder.ID, orders[0].ID)
+					require.Equal(t, yaOrder.Status, orders[0].Status)
+					require.Equal(t, yaOrder.Accrual, orders[0].Accrual)
+					require.Equal(t, order.ID, orders[1].ID)
+					require.Equal(t, order.Status, orders[1].Status)
+					require.Equal(t, order.Accrual, orders[1].Accrual)
+				})
+			})
+
+			t.Run("nonexistent user", func(t *testing.T) {
+				withTx(t, tx, func(ttx pgx.Tx, repos *repository.Repos) {
+					orders, err := repos.OrderRepo.ListOrders(t.Context(), uuid.New())
+
+					require.NoError(t, err, "listing orders for nonexistent user should not fail")
+					require.Empty(t, orders, "should return empty list for nonexistent user")
+				})
+			})
 		})
 	})
 }

@@ -11,7 +11,6 @@ import (
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
-	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 type OrderRepo struct {
@@ -32,7 +31,7 @@ UNION
 SELECT * FROM orders WHERE number = $4
 `
 
-func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...repository.OrderOption) (models.Order, error) {
+func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...models.OrderOption) (models.Order, error) {
 	now := time.Now()
 	orderID := uuid.New()
 
@@ -66,6 +65,24 @@ func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.
 		return o, errors.New("programming error, should never be here")
 	}
 
+}
+
+const listOrders = `
+SELECT * FROM orders
+WHERE user_id = $1
+ORDER BY uploaded_at DESC
+`
+
+func (r *OrderRepo) ListOrders(ctx context.Context, userID uuid.UUID) ([]models.Order, error) {
+	rows, _ := r.DB.Query(ctx, listOrders, userID)
+	orders, err := pgx.CollectRows(rows, rowToOrder)
+
+	switch err {
+	case nil:
+		return orders, nil
+	default:
+		return nil, fmt.Errorf("db error: %w", err)
+	}
 }
 
 func rowToOrder(row pgx.CollectableRow) (models.Order, error) {

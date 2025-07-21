@@ -15,7 +15,8 @@ import (
 )
 
 type orderService interface {
-	CreateOrder(ctx context.Context, number string, user *models.User) (models.Order, error)
+	CreateOrder(ctx context.Context, number string, user *models.User, opts ...models.OrderOption) (models.Order, error)
+	ListOrders(ctx context.Context, user *models.User) ([]models.Order, error)
 }
 
 type OrderHandler struct {
@@ -36,6 +37,7 @@ func NewOrder(orderService orderService) *OrderHandler {
 func (h *OrderHandler) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /orders", h.create)
+	mux.HandleFunc("GET /orders", h.list)
 
 	return mux
 }
@@ -55,24 +57,58 @@ func (h *OrderHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	order, err := h.orderService.CreateOrder(r.Context(), string(number), &user)
-	res := OrderResponse{
+	resp := OrderResponse{
 		Number:     order.Number,
 		Status:     order.Status,
 		Accrual:    nil,
 		UploadedAt: order.UploadedAt,
 	}
 	if !order.Accrual.IsZero() {
-		res.Accrual = &order.Accrual
+		resp.Accrual = &order.Accrual
 	}
 
 	switch {
 	case err == nil:
-		render.JSONWithStatus(w, res, http.StatusAccepted)
+		render.JSONWithStatus(w, resp, http.StatusAccepted)
 	case errors.Is(err, apperrors.ErrOrderAlreadyExists):
-		render.JSONWithStatus(w, res, http.StatusOK)
+		render.JSONWithStatus(w, resp, http.StatusOK)
 	case errors.Is(err, apperrors.ErrOrderNumberTaken):
 		render.ServiceError(w, "Order number already taken", http.StatusConflict)
 	default:
 		render.ServiceError(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+
+func (h *OrderHandler) list(w http.ResponseWriter, r *http.Request) {
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		render.ServiceError(w, "Internal service error", http.StatusInternalServerError)
+		return
+	}
+
+	orders, err := h.orderService.ListOrders(r.Context(), &user)
+	if err != nil {
+		render.ServiceError(w, "Failed to list orders", http.StatusInternalServerError)
+		return
+	}
+
+	if len(orders) == 0 {
+		render.JSONWithStatus(w, []OrderResponse{}, http.StatusNoContent)
+		return
+	}
+
+	resp := make([]OrderResponse, len(orders))
+	for i, order := range orders {
+		resp[i] = OrderResponse{
+			Number:     order.Number,
+			Status:     order.Status,
+			Accrual:    nil,
+			UploadedAt: order.UploadedAt,
+		}
+		if !order.Accrual.IsZero() {
+			resp[i].Accrual = &order.Accrual
+		}
+	}
+	
+	render.JSON(w, resp)
 }
