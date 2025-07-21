@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	RefreshURL = "/auth/refresh"
+	RefreshURL = "/api/user/refresh"
 )
 
 func Test_AuthRefresh(t *testing.T) {

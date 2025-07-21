@@ -14,11 +14,13 @@ import (
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
+	"github.com/nkiryanov/gophermart/internal/service/order"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
 type Services struct {
-	AuthService *auth.AuthService
+	AuthService  *auth.AuthService
+	OrderService *order.OrderService
 }
 
 func RunTx(dbpool *pgxpool.Pool, t *testing.T, fn func(srvURL string, services Services)) {
@@ -26,27 +28,36 @@ func RunTx(dbpool *pgxpool.Pool, t *testing.T, fn func(srvURL string, services S
 		// Initialize repositories
 		userRepo := &postgres.UserRepo{DB: tx}
 		refreshRepo := &postgres.RefreshTokenRepo{DB: tx}
+		orderRepo := &postgres.OrderRepo{DB: tx}
 
 		// Initialize services
 		tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: "test-secret"}, refreshRepo)
 		require.NoError(t, err, "token manager should be created without errors")
 
-		s, err := auth.NewService(auth.Config{}, tokenManager, userRepo)
+		as, err := auth.NewService(auth.Config{}, tokenManager, userRepo)
 		require.NoError(t, err, "auth service starting error", err)
 
+		os := order.NewService(orderRepo)
+
 		// Initializer handlers
-		authHandler := handlers.NewAuth(s)
-		authMiddleware := middleware.NewAuth(s)
+		authHandler := handlers.NewAuth(as)
+		authMiddleware := middleware.NewAuth(as)
+		orderHandler := handlers.NewOrder(os)
 
 		// Complete all together as router
-		router := handlers.NewRouter(authHandler, authMiddleware)
+		router := handlers.NewRouter(
+			authHandler,
+			orderHandler,
+			authMiddleware,
+		)
 
 		// Run http server with the router in transaction
 		srv := httptest.NewServer(router)
 		defer srv.Close()
 
 		fn(srv.URL, Services{
-			AuthService: s,
+			AuthService:  as,
+			OrderService: os,
 		})
 	})
 }

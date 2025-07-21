@@ -17,7 +17,7 @@ func TestOrders(t *testing.T) {
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	// Create transaction and repository for on the transaction
+	// Create transaction and repository base on it
 	// May be called several times(aka transaction in transaction)
 	withTx := func(t *testing.T, tx DBTX, fn func(pgx.Tx, *repository.Repos)) {
 		testutil.WithTx(tx, t, func(ttx pgx.Tx) {
