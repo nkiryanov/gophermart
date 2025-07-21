@@ -21,6 +21,10 @@ const (
 	defaultRefreshCookieName = "refreshtoken"
 )
 
+var (
+	DefaultHasher = BcryptHasher{}
+)
+
 // Interface to create or compare user password hashes
 type PasswordHasher interface {
 	// Generate Hash from password
@@ -80,7 +84,7 @@ func NewService(cfg Config, tokenManager TokenManager, userRepo repository.UserR
 
 	// Set default bcrypt hasher if not user provided by user
 	if cfg.Hasher == nil {
-		cfg.Hasher = BcryptHasher{}
+		cfg.Hasher = DefaultHasher
 	}
 
 	return &AuthService{

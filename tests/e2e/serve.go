@@ -1,4 +1,4 @@
-package integration
+package e2e
 
 import (
 	"net/http/httptest"
@@ -15,12 +15,14 @@ import (
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
 	"github.com/nkiryanov/gophermart/internal/service/order"
+	"github.com/nkiryanov/gophermart/internal/service/user"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
 type Services struct {
 	AuthService  *auth.AuthService
 	OrderService *order.OrderService
+	UserService  *user.UserService
 }
 
 // Create db transaction and run server in with that connection (one connection cause one transaction)
@@ -40,6 +42,7 @@ func ServeWithTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL s
 		require.NoError(t, err, "auth service starting error", err)
 
 		os := order.NewService(orderRepo)
+		us := user.NewService(auth.DefaultHasher, userRepo)
 
 		// Initializer handlers
 		authHandler := handlers.NewAuth(as)
@@ -60,6 +63,7 @@ func ServeWithTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL s
 		fn(tx, srv.URL, Services{
 			AuthService:  as,
 			OrderService: os,
+			UserService:  us,
 		})
 	})
 }
