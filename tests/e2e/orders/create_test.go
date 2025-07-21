@@ -89,7 +89,7 @@ func Test_OrdersCreate(t *testing.T) {
 
 				assert.Equal(t, order.Number, response.Number, "order number should match")
 				assert.Equal(t, order.Status, response.Status, "order status should match")
-				assert.Equal(t, order.UploadedAt, response.UploadedAt, "uploaded_at should be the same for the same order")
+				assert.Equal(t, order.UploadedAt.UTC(), response.UploadedAt.UTC(), "uploaded_at should be the same for the same order")
 			})
 		})
 
@@ -115,6 +115,20 @@ func Test_OrdersCreate(t *testing.T) {
 					"error": "service_error",
 					"message": "Order number already taken"
 				}`, string(body))
+			})
+		})
+
+		t.Run("unauthorized request", func(t *testing.T) {
+			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+				req, err := http.NewRequest(http.MethodPost, srvURL+OrderCreateURL, strings.NewReader("1"))
+				require.NoError(t, err, "failed to create request")
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err, "failed to send request")
+				defer resp.Body.Close() // nolint:errcheck
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err, "failed to read response body")
+
+				require.Equalf(t, http.StatusUnauthorized, resp.StatusCode, "unauthorized request should return 401. Body: %s", string(body))
 			})
 		})
 

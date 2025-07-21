@@ -18,6 +18,12 @@ func NewService(orderRepo repository.OrderRepo) *OrderService {
 	}
 }
 
-func (s *OrderService) CreateOrder(ctx context.Context, number string, user *models.User) (models.Order, error) {
-	return s.orderRepo.CreateOrder(ctx, number, user.ID)
+type OrderOption func(*models.Order)
+
+func (s *OrderService) CreateOrder(ctx context.Context, number string, user *models.User, opts ...models.OrderOption) (models.Order, error) {
+	return s.orderRepo.CreateOrder(ctx, number, user.ID, opts...)
+}
+
+func (s *OrderService) ListOrders(ctx context.Context, user *models.User) ([]models.Order, error) {
+	return s.orderRepo.ListOrders(ctx, user.ID)
 }
