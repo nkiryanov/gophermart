@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os/exec"
@@ -79,10 +80,14 @@ func StartPostgresContainer(t *testing.T) PostgresContainer {
 	}
 }
 
+type dbtx interface {
+	Begin(context.Context) (pgx.Tx, error)
+}
+
 // Create db transaction and rollback at test end
 // So you may be sure db remains unchanged when test stops
-func WithTx(dbpool *pgxpool.Pool, t *testing.T, testFunc func(tx pgx.Tx)) {
-	tx, err := dbpool.Begin(t.Context())
+func WithTx(dbtx dbtx, t *testing.T, testFunc func(tx pgx.Tx)) {
+	tx, err := dbtx.Begin(t.Context())
 	require.NoError(t, err)
 
 	defer func() {

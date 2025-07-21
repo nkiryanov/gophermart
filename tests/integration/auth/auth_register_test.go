@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	RegisterURL = "/auth/register"
+	RegisterURL = "/api/user/register"
 )
 
 func Test_AuthRegister(t *testing.T) {

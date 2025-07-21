@@ -9,17 +9,20 @@ import (
 
 type middleware func(next http.Handler) http.Handler
 
-func NewRouter(authHandler *AuthHandler, authMiddleware middleware) http.Handler {
-	withAuth := func(h http.HandlerFunc) http.Handler {
+func NewRouter(authHandler *AuthHandler, orderHandler *OrderHandler, authMiddleware middleware) http.Handler {
+	withAuth := func(h http.Handler) http.Handler {
 		return authMiddleware(h)
 	}
 
-	// Root /
-	mux := http.NewServeMux()
+	apiuser := http.NewServeMux()
 
-	// Set /auth/ routes
-	mux.Handle("/auth/", http.StripPrefix("/auth", authHandler.Handler()))
-	mux.Handle("GET /auth/me", withAuth(
+	apiuser.Handle("/login", authHandler.Handler())
+	apiuser.Handle("/register", authHandler.Handler())
+	apiuser.Handle("/refresh", authHandler.Handler())
+
+	apiuser.Handle("/orders", withAuth(orderHandler.Handler()))
+
+	apiuser.Handle("GET /me", withAuth(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, _ := UserFromContext(r.Context())
 			render.JSON(w, struct {
@@ -29,5 +32,8 @@ func NewRouter(authHandler *AuthHandler, authMiddleware middleware) http.Handler
 		}),
 	))
 
-	return mux
+	root := http.NewServeMux()
+	root.Handle("/api/user/", http.StripPrefix("/api/user", apiuser))
+
+	return root
 }

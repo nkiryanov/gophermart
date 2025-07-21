@@ -13,6 +13,7 @@ import (
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
+	"github.com/nkiryanov/gophermart/internal/service/order"
 )
 
 const (
@@ -36,24 +37,25 @@ func NewServerApp(ctx context.Context) (*ServerApp, error) {
 	// Initialize repositories
 	userRepo := &postgres.UserRepo{DB: pool}
 	refreshRepo := &postgres.RefreshTokenRepo{DB: pool}
+	orderRepo := &postgres.OrderRepo{DB: pool}
 
-	// Initialize token manager
+	// Initialize services
 	tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: SecretKey}, refreshRepo)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating token manager")
 	}
-
-	// Initializer auth service
 	authService, err := auth.NewService(auth.Config{}, tokenManager, userRepo)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating auth service. Err: %w", err)
 	}
+	orderService := order.NewService(orderRepo)
 
 	// Initialize auth handler
 	authHandler := handlers.NewAuth(authService)
+	orderHandler := handlers.NewOrder(orderService)
 	authMiddleware := middleware.NewAuth(authService)
 
-	mux := handlers.NewRouter(authHandler, authMiddleware)
+	mux := handlers.NewRouter(authHandler, orderHandler, authMiddleware)
 
 	return &ServerApp{
 		ListenAddr: ListenAddr,

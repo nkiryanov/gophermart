@@ -40,7 +40,7 @@ type ErrorResponse struct {
 }
 
 func JSON(w http.ResponseWriter, data any) {
-	jsonWithStatus(w, data, http.StatusOK)
+	JSONWithStatus(w, data, http.StatusOK)
 }
 
 // Render ServiceError
@@ -50,7 +50,7 @@ func ServiceError(w http.ResponseWriter, error string, code int) {
 		Message: error,
 	}
 
-	jsonWithStatus(w, response, code)
+	JSONWithStatus(w, response, code)
 }
 
 // Render json DecodeError
@@ -68,7 +68,7 @@ func DecodeError(w http.ResponseWriter, err error) {
 		response.Message = fmt.Sprintf("Failed to parse JSON: %s", err.Error())
 	}
 
-	jsonWithStatus(w, response, http.StatusBadRequest)
+	JSONWithStatus(w, response, http.StatusBadRequest)
 }
 
 // Render ValidationErrors
@@ -94,7 +94,7 @@ func ValidationErrors(w http.ResponseWriter, errs validator.ValidationErrors) {
 		response.Fields[fieldError.Field()] = message
 	}
 
-	jsonWithStatus(w, response, http.StatusBadRequest)
+	JSONWithStatus(w, response, http.StatusBadRequest)
 }
 
 // BindAndValidate decodes JSON request body into type T and validates it using struct tags.
@@ -120,7 +120,7 @@ func BindAndValidate[T Struct](w http.ResponseWriter, r *http.Request) (T, error
 }
 
 // renderJSONWithStatus sends data as json and enforces status code
-func jsonWithStatus(w http.ResponseWriter, data any, code int) {
+func JSONWithStatus(w http.ResponseWriter, data any, code int) {
 	buf := &bytes.Buffer{}
 	enc := json.NewEncoder(buf)
 

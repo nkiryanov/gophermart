@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	LoginURL = "/auth/login"
+	LoginURL = "/api/user/login"
 )
 
 func Test_Login(t *testing.T) {
