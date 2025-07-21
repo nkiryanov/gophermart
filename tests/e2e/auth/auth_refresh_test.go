@@ -11,7 +11,7 @@ import (
 
 	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/testutil"
-	"github.com/nkiryanov/gophermart/tests/integration"
+	"github.com/nkiryanov/gophermart/tests/e2e"
 )
 
 const (
@@ -24,7 +24,7 @@ func Test_AuthRefresh(t *testing.T) {
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	integration.ServeWithTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s integration.Services) {
+	e2e.ServeWithTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
 		pair, err := s.AuthService.Register(t.Context(), "nk", "StrongEnoughPassword")
 		require.NoError(t, err)
 

@@ -1,4 +1,4 @@
-package integration
+package e2e
 
 import (
 	"net/http/httptest"
@@ -15,12 +15,14 @@ import (
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
 	"github.com/nkiryanov/gophermart/internal/service/order"
+	"github.com/nkiryanov/gophermart/internal/service/user"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
 type Services struct {
 	AuthService  *auth.AuthService
 	OrderService *order.OrderService
+	UserService  *user.UserService
 }
 
 // Create db transaction and run server in with that connection (one connection cause one transaction)
@@ -36,15 +38,16 @@ func ServeWithTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL s
 		tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: "test-secret"}, refreshRepo)
 		require.NoError(t, err, "token manager should be created without errors")
 
-		as, err := auth.NewService(auth.Config{}, tokenManager, userRepo)
+		orderService := order.NewService(orderRepo)
+		userService := user.NewService(user.DefaultHasher, userRepo)
+
+		authService, err := auth.NewService(auth.Config{}, tokenManager, userService)
 		require.NoError(t, err, "auth service starting error", err)
 
-		os := order.NewService(orderRepo)
-
 		// Initializer handlers
-		authHandler := handlers.NewAuth(as)
-		authMiddleware := middleware.NewAuth(as)
-		orderHandler := handlers.NewOrder(os)
+		authHandler := handlers.NewAuth(authService)
+		authMiddleware := middleware.NewAuth(authService)
+		orderHandler := handlers.NewOrder(orderService)
 
 		// Complete all together as router
 		router := handlers.NewRouter(
@@ -58,8 +61,9 @@ func ServeWithTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL s
 		defer srv.Close()
 
 		fn(tx, srv.URL, Services{
-			AuthService:  as,
-			OrderService: os,
+			AuthService:  authService,
+			OrderService: orderService,
+			UserService:  userService,
 		})
 	})
 }

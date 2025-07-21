@@ -14,6 +14,7 @@ import (
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
+	"github.com/nkiryanov/gophermart/internal/service/user"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
 
@@ -40,7 +41,9 @@ func Test_Auth(t *testing.T) {
 			)
 			require.NoError(t, err, "token manager should be created without errors")
 
-			s, err := NewService(Config{}, tokenManager, userRepo)
+			userService := user.NewService(user.DefaultHasher, userRepo)
+
+			s, err := NewService(Config{}, tokenManager, userService)
 			require.NoError(t, err, "auth service could't be started", err)
 
 			fn(s)
@@ -54,7 +57,6 @@ func Test_Auth(t *testing.T) {
 		require.Equal(t, defaultAccessHeaderName, s.accessHeaderName, "default access header name should be set")
 		require.Equal(t, defaultAccessAuthScheme, s.accessAuthScheme, "default access auth")
 		require.Equal(t, defaultRefreshCookieName, s.refreshCookieName, "default refresh cookie name should be set")
-		require.Equal(t, BcryptHasher{}, s.hasher, "default hasher should be set to BcryptHasher")
 	})
 
 	t.Run("Register", func(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
 	"github.com/nkiryanov/gophermart/internal/service/order"
+	"github.com/nkiryanov/gophermart/internal/service/user"
 )
 
 const (
@@ -44,11 +45,12 @@ func NewServerApp(ctx context.Context) (*ServerApp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error while creating token manager")
 	}
-	authService, err := auth.NewService(auth.Config{}, tokenManager, userRepo)
+	userService := user.NewService(user.DefaultHasher, userRepo)
+	orderService := order.NewService(orderRepo)
+	authService, err := auth.NewService(auth.Config{}, tokenManager, userService)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating auth service. Err: %w", err)
 	}
-	orderService := order.NewService(orderRepo)
 
 	// Initialize auth handler
 	authHandler := handlers.NewAuth(authService)
