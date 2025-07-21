@@ -10,9 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
-	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 const (
@@ -20,20 +18,6 @@ const (
 	defaultAccessAuthScheme  = "Bearer"
 	defaultRefreshCookieName = "refreshtoken"
 )
-
-var (
-	DefaultHasher = BcryptHasher{}
-)
-
-// Interface to create or compare user password hashes
-type PasswordHasher interface {
-	// Generate Hash from password
-	Hash(password string) (string, error)
-
-	// Compare known hashedPassword and user provided password
-	// Must be protected against timing attacks
-	Compare(hashedPassword string, password string) error
-}
 
 type TokenManager interface {
 	// GeneratePair generates access and refresh tokens for user
@@ -46,14 +30,24 @@ type TokenManager interface {
 	ParseAccess(ctx context.Context, access string) (userID uuid.UUID, err error)
 }
 
+type userService interface {
+	// Create user with username and password
+	CreateUser(ctx context.Context, username string, password string) (models.User, error)
+
+	// Login user with username and password
+	// Has to return apperrors.ErrUserNotFound if user not found
+	Login(ctx context.Context, username string, password string) (models.User, error)
+
+	// Get user by ID
+	GetUserByID(ctx context.Context, userID uuid.UUID) (models.User, error)
+}
+
 // AuthService config with sensible defaults
 // All fields are optional: if not set, default values will be used
 type Config struct {
 	AccessHeaderName  string
 	AccessAuthScheme  string
 	RefreshCookieName string
-
-	Hasher PasswordHasher
 }
 
 // Auth service
@@ -65,14 +59,11 @@ type AuthService struct {
 	// Manager to issue token pairs (access and refresh)
 	tokenManager TokenManager
 
-	// hasher to hash or compare user passwords
-	hasher PasswordHasher
-
-	// Repository to access long term data
-	userRepo repository.UserRepo
+	// Service to create and get users
+	userService userService
 }
 
-func NewService(cfg Config, tokenManager TokenManager, userRepo repository.UserRepo) (*AuthService, error) {
+func NewService(cfg Config, tokenManager TokenManager, userService userService) (*AuthService, error) {
 	setDefaultString := func(field *string, def string) {
 		if *field == "" {
 			*field = def
@@ -82,30 +73,19 @@ func NewService(cfg Config, tokenManager TokenManager, userRepo repository.UserR
 	setDefaultString(&cfg.AccessAuthScheme, defaultAccessAuthScheme)
 	setDefaultString(&cfg.RefreshCookieName, defaultRefreshCookieName)
 
-	// Set default bcrypt hasher if not user provided by user
-	if cfg.Hasher == nil {
-		cfg.Hasher = DefaultHasher
-	}
-
 	return &AuthService{
 		accessHeaderName:  cfg.AccessHeaderName,
 		accessAuthScheme:  cfg.AccessAuthScheme,
 		refreshCookieName: cfg.RefreshCookieName,
 		tokenManager:      tokenManager,
-		hasher:            cfg.Hasher,
-		userRepo:          userRepo,
+		userService:       userService,
 	}, nil
 }
 
 func (s *AuthService) Register(ctx context.Context, username string, password string) (models.TokenPair, error) {
 	var pair models.TokenPair
 
-	hash, err := s.hasher.Hash(password)
-	if err != nil {
-		return pair, fmt.Errorf("can't use this as password, Err: %w", err)
-	}
-
-	user, err := s.userRepo.CreateUser(ctx, username, hash)
+	user, err := s.userService.CreateUser(ctx, username, password)
 	if err != nil {
 		return pair, fmt.Errorf("can't register user. Err: %w", err)
 	}
@@ -121,15 +101,9 @@ func (s *AuthService) Register(ctx context.Context, username string, password st
 func (s *AuthService) Login(ctx context.Context, username string, password string) (models.TokenPair, error) {
 	var pair models.TokenPair
 
-	// Ignore error for now, but prefer to log it
-	// It's safe to use user now, because it's always not empty
-	user, _ := s.userRepo.GetUserByUsername(ctx, username)
-
-	// Always compare password to prevent timing attacks
-	// It will always fail if user not found
-	err := s.hasher.Compare(user.HashedPassword, password)
+	user, err := s.userService.Login(ctx, username, password)
 	if err != nil {
-		return pair, apperrors.ErrUserNotFound
+		return pair, fmt.Errorf("can't login user. Err: %w", err)
 	}
 
 	pair, err = s.tokenManager.GeneratePair(ctx, user)
@@ -152,7 +126,7 @@ func (s *AuthService) RefreshPair(ctx context.Context, refresh string) (models.T
 	}
 
 	// Check whether user is still exists
-	user, err := s.userRepo.GetUserByID(ctx, token.UserID)
+	user, err := s.userService.GetUserByID(ctx, token.UserID)
 	if err != nil {
 		return pair, fmt.Errorf("token could not be refreshed. Err: %w", err)
 	}
@@ -229,7 +203,7 @@ func (s *AuthService) Auth(ctx context.Context, r *http.Request) (models.User, e
 		return u, fmt.Errorf("token is not valid. Err: %w", err)
 	}
 
-	u, err = s.userRepo.GetUserByID(ctx, userID)
+	u, err = s.userService.GetUserByID(ctx, userID)
 	if err != nil {
 		return u, fmt.Errorf("user not found. Err: %w", err)
 	}

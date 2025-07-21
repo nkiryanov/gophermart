@@ -38,16 +38,16 @@ func ServeWithTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL s
 		tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: "test-secret"}, refreshRepo)
 		require.NoError(t, err, "token manager should be created without errors")
 
-		as, err := auth.NewService(auth.Config{}, tokenManager, userRepo)
+		orderService := order.NewService(orderRepo)
+		userService := user.NewService(user.DefaultHasher, userRepo)
+
+		authService, err := auth.NewService(auth.Config{}, tokenManager, userService)
 		require.NoError(t, err, "auth service starting error", err)
 
-		os := order.NewService(orderRepo)
-		us := user.NewService(auth.DefaultHasher, userRepo)
-
 		// Initializer handlers
-		authHandler := handlers.NewAuth(as)
-		authMiddleware := middleware.NewAuth(as)
-		orderHandler := handlers.NewOrder(os)
+		authHandler := handlers.NewAuth(authService)
+		authMiddleware := middleware.NewAuth(authService)
+		orderHandler := handlers.NewOrder(orderService)
 
 		// Complete all together as router
 		router := handlers.NewRouter(
@@ -61,9 +61,9 @@ func ServeWithTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL s
 		defer srv.Close()
 
 		fn(tx, srv.URL, Services{
-			AuthService:  as,
-			OrderService: os,
-			UserService:  us,
+			AuthService:  authService,
+			OrderService: orderService,
+			UserService:  userService,
 		})
 	})
 }

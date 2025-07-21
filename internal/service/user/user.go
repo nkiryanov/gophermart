@@ -4,19 +4,34 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/repository"
-	"github.com/nkiryanov/gophermart/internal/service/auth"
 )
 
+var (
+	DefaultHasher = BcryptHasher{}
+)
+
+// Interface to create or compare user password hashes
+type PasswordHasher interface {
+	// Generate Hash from password
+	Hash(password string) (string, error)
+
+	// Compare known hashedPassword and user provided password
+	// Must be protected against timing attacks
+	Compare(hashedPassword string, password string) error
+}
+
 type UserService struct {
-	hasher   auth.PasswordHasher
+	hasher   PasswordHasher
 	userRepo repository.UserRepo
 }
 
-func NewService(hasher auth.PasswordHasher, userRepo repository.UserRepo) *UserService {
+func NewService(hasher PasswordHasher, userRepo repository.UserRepo) *UserService {
 	if hasher == nil {
-		hasher = auth.DefaultHasher
+		hasher = DefaultHasher
 	}
 
 	return &UserService{
@@ -27,6 +42,10 @@ func NewService(hasher auth.PasswordHasher, userRepo repository.UserRepo) *UserS
 
 func (s *UserService) CreateUser(ctx context.Context, username string, password string) (models.User, error) {
 	var user models.User
+	if password == "" {
+		return user, fmt.Errorf("password can't be empty")
+	}
+
 	hash, err := s.hasher.Hash(password)
 	if err != nil {
 		return user, fmt.Errorf("can't use this as password, Err: %w", err)
@@ -38,4 +57,23 @@ func (s *UserService) CreateUser(ctx context.Context, username string, password 
 	}
 
 	return user, nil
+}
+
+func (s *UserService) Login(ctx context.Context, username string, password string) (models.User, error) {
+	// Ignore error for now, but prefer to log it
+	// It's safe to use user now, because it's always not empty
+	user, _ := s.userRepo.GetUserByUsername(ctx, username)
+
+	// Always compare password to prevent timing attacks
+	// It will always fail if user not found
+	err := s.hasher.Compare(user.HashedPassword, password)
+	if err != nil {
+		return user, apperrors.ErrUserNotFound
+	}
+
+	return user, nil
+}
+
+func (s *UserService) GetUserByID(ctx context.Context, userID uuid.UUID) (models.User, error) {
+	return s.userRepo.GetUserByID(ctx, userID)
 }
