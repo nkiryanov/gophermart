@@ -38,6 +38,14 @@ func TestUser(t *testing.T) {
 				require.NotEmpty(t, user.HashedPassword, "password hash should not be empty")
 				require.NotEqual(t, "password123", user.HashedPassword, "password should be hashed")
 				require.NotZero(t, user.CreatedAt, "created at should be set")
+
+				balance, err := s.storage.Balance().GetBalance(t.Context(), user.ID)
+
+				require.NoError(t, err, "balance creation should not fail")
+				require.Equal(t, user.ID, balance.UserID, "balance user ID should match created")
+				require.True(t, balance.Current.IsZero(), "initial balance should be zero")
+				require.True(t, balance.Withdrawn.IsZero(), "initial withdrawn should be zero")
+
 			})
 		})
 

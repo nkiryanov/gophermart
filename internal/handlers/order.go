@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"strings"
 
 	"github.com/shopspring/decimal"
 
@@ -57,15 +58,7 @@ func (h *OrderHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	order, err := h.orderService.CreateOrder(r.Context(), string(number), &user)
-	resp := OrderResponse{
-		Number:     order.Number,
-		Status:     order.Status,
-		Accrual:    nil,
-		UploadedAt: order.UploadedAt,
-	}
-	if !order.Accrual.IsZero() {
-		resp.Accrual = &order.Accrual
-	}
+	resp := orderToResponse(&order)
 
 	switch {
 	case err == nil:
@@ -99,16 +92,21 @@ func (h *OrderHandler) list(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]OrderResponse, len(orders))
 	for i, order := range orders {
-		resp[i] = OrderResponse{
-			Number:     order.Number,
-			Status:     order.Status,
-			Accrual:    nil,
-			UploadedAt: order.UploadedAt,
-		}
-		if !order.Accrual.IsZero() {
-			resp[i].Accrual = &order.Accrual
-		}
+		resp[i] = orderToResponse(&order)
 	}
 
 	render.JSON(w, resp)
+}
+
+func orderToResponse(o *models.Order) OrderResponse {
+	r := OrderResponse{
+		Number:     o.Number,
+		Status:     strings.ToUpper(o.Status),
+		Accrual:    nil,
+		UploadedAt: o.UploadedAt,
+	}
+	if !o.Accrual.IsZero() {
+		r.Accrual = &o.Accrual
+	}
+	return r
 }

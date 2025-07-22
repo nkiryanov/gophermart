@@ -1,0 +1,28 @@
+package models
+
+import (
+	"time"
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+)
+
+const (
+	TransactionAccrual = "accrual"
+	TransactionWithdraw = "withdraw"
+)
+
+type Balance struct {
+	ID uuid.UUID
+	UserID uuid.UUID
+	Current decimal.Decimal
+	Withdrawn decimal.Decimal
+}
+
+type Transaction struct {
+	ID uuid.UUID
+	ProcessedAt time.Time
+	UserID uuid.UUID
+	OrderNumber string
+	Type string
+	Amount decimal.Decimal
+}

@@ -17,13 +17,13 @@ type UserRepo struct {
 	DB DBTX
 }
 
-const createUser = `-- name: CreateUser
-INSERT INTO users (username, password_hash)
-VALUES ($1, $2)
-RETURNING id, created_at, username, password_hash
-`
-
 func (r *UserRepo) CreateUser(ctx context.Context, username string, hashedPassword string) (models.User, error) {
+	const createUser = `
+	INSERT INTO users (username, password_hash)
+	VALUES ($1, $2)
+	RETURNING id, created_at, username, password_hash
+	`
+
 	rows, _ := r.DB.Query(ctx, createUser, username, hashedPassword)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
@@ -39,12 +39,12 @@ func (r *UserRepo) CreateUser(ctx context.Context, username string, hashedPasswo
 	return user, nil
 }
 
-const getUserByID = `-- name: getUserByID
-SELECT * FROM users
-WHERE id = $1
-`
-
 func (r *UserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (models.User, error) {
+	const getUserByID = `
+	SELECT * FROM users
+	WHERE id = $1
+	`
+
 	rows, _ := r.DB.Query(ctx, getUserByID, id)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 
@@ -58,12 +58,12 @@ func (r *UserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (models.User, 
 	}
 }
 
-const getUserByUsername = `-- name: getUserByUsername
-SELECT * FROM users
-WHERE username = $1
-`
 
 func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (models.User, error) {
+	const getUserByUsername = `
+	SELECT * FROM users
+	WHERE username = $1
+	`
 	rows, _ := r.DB.Query(ctx, getUserByUsername, username)
 	user, err := pgx.CollectOneRow(rows, rowToUser)
 

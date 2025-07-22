@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	OrderNew        = "NEW"
-	OrderProcessing = "PROCESSING"
-	OrderInvalid    = "INVALID"
-	OrderProcessed  = "PROCESSED"
+	OrderNew        = "new"
+	OrderProcessing = "processing"
+	OrderInvalid    = "invalid"
+	OrderProcessed  = "processed"
 )
 
 type Order struct {
