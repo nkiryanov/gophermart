@@ -27,6 +27,10 @@ func (s *Storage) Order() repository.OrderRepo {
 	return &OrderRepo{DB: s.db}
 }
 
+func (s *Storage) Balance() repository.BalanceRepo {
+	return &BalanceRepo{DB: s.db}
+}
+
 func (s *Storage) InTx(ctx context.Context, fn func(repository.Storage) error) (err error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {

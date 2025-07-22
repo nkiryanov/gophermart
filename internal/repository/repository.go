@@ -40,10 +40,16 @@ type OrderRepo interface {
 	ListOrders(ctx context.Context, userID uuid.UUID) ([]models.Order, error)
 }
 
+type BalanceRepo interface {
+	CreateBalance(ctx context.Context, userID uuid.UUID) error
+	GetBalance(ctx context.Context, userID uuid.UUID) (models.Balance, error)
+}
+
 type Storage interface {
 	User() UserRepo
 	Refresh() RefreshTokenRepo
 	Order() OrderRepo
+	Balance() BalanceRepo
 
 	// InTx starts a transaction, executes the provided function, and commits or rolls back based on the function's error.
 	InTx(ctx context.Context, fn func(Storage) error) error

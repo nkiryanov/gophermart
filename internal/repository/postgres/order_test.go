@@ -21,10 +21,10 @@ func TestOrders(t *testing.T) {
 
 	// Create transaction and repository base on it
 	// May be called several times(aka transaction in transaction)
-	inTx := func(t *testing.T, tx DBTX, fn func(pgx.Tx, repository.Storage)) {
-		testutil.InTx(tx, t, func(ttx pgx.Tx) {
-			storage := NewStorage(tx)
-			fn(ttx, storage)
+	inTx := func(t *testing.T, outerTx DBTX, fn func(pgx.Tx, repository.Storage)) {
+		testutil.InTx(outerTx, t, func(innerTx pgx.Tx) {
+			storage := NewStorage(innerTx)
+			fn(innerTx, storage)
 		})
 	}
 

@@ -53,9 +53,10 @@ func NewServerApp(ctx context.Context) (*ServerApp, error) {
 	// Initialize auth handler
 	authHandler := handlers.NewAuth(authService)
 	orderHandler := handlers.NewOrder(orderService)
+	balanceHandler := handlers.NewBalance(userService)
 	authMiddleware := middleware.NewAuth(authService)
 
-	mux := handlers.NewRouter(authHandler, orderHandler, authMiddleware)
+	mux := handlers.NewRouter(authHandler, orderHandler, balanceHandler, authMiddleware)
 
 	return &ServerApp{
 		ListenAddr: ListenAddr,

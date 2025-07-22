@@ -51,9 +51,21 @@ func (s *UserService) CreateUser(ctx context.Context, username string, password 
 		return user, fmt.Errorf("can't use this as password, Err: %w", err)
 	}
 
-	user, err = s.storage.User().CreateUser(ctx, username, hash)
+	err = s.storage.InTx(ctx, func(storage repository.Storage) error {
+		user, err = s.storage.User().CreateUser(ctx, username, hash)
+		if err != nil {
+			return fmt.Errorf("can't create user. Err: %w", err)
+		}
+
+		err = s.storage.Balance().CreateBalance(ctx, user.ID)
+		if err != nil {
+			return fmt.Errorf("can't create user balance. Err: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
-		return user, fmt.Errorf("can't create user. Err: %w", err)
+		return user, err
 	}
 
 	return user, nil
@@ -76,4 +88,8 @@ func (s *UserService) Login(ctx context.Context, username string, password strin
 
 func (s *UserService) GetUserByID(ctx context.Context, userID uuid.UUID) (models.User, error) {
 	return s.storage.User().GetUserByID(ctx, userID)
+}
+
+func (s *UserService) GetBalance(ctx context.Context, userID uuid.UUID) (models.Balance, error) {
+	return s.storage.Balance().GetBalance(ctx, userID)
 }
