@@ -27,7 +27,7 @@ func Test_OrdersCreate(t *testing.T) {
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	e2e.ServeWithTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
+	e2e.ServeInTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
 		user, err := s.UserService.CreateUser(t.Context(), "test-user", "pwd")
 		require.NoError(t, err)
 
@@ -49,7 +49,7 @@ func Test_OrdersCreate(t *testing.T) {
 		}
 
 		t.Run("create order ok", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				req := authReq("test-user", "pwd", "123", t)
 				resp, err := http.DefaultClient.Do(req)
 				require.NoError(t, err, "failed to send request")
@@ -71,7 +71,7 @@ func Test_OrdersCreate(t *testing.T) {
 		})
 
 		t.Run("create twice ok", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				order, err := s.OrderService.CreateOrder(t.Context(), "123", &user)
 				require.NoError(t, err, "order has to be created ok")
 
@@ -94,7 +94,7 @@ func Test_OrdersCreate(t *testing.T) {
 		})
 
 		t.Run("create on conflict", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				// User order
 				_, err := s.OrderService.CreateOrder(t.Context(), "123", &user)
 				require.NoError(t, err, "order has to be created ok")
@@ -119,7 +119,7 @@ func Test_OrdersCreate(t *testing.T) {
 		})
 
 		t.Run("unauthorized request", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				req, err := http.NewRequest(http.MethodPost, srvURL+OrderCreateURL, strings.NewReader("1"))
 				require.NoError(t, err, "failed to create request")
 				resp, err := http.DefaultClient.Do(req)

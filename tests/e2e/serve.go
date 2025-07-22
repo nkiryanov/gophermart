@@ -27,19 +27,17 @@ type Services struct {
 
 // Create db transaction and run server in with that connection (one connection cause one transaction)
 // The created transaction passed to inner function: so, you can safely use testutil.WithTx with it
-func ServeWithTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL string, services Services)) {
-	testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
+func ServeInTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL string, services Services)) {
+	testutil.InTx(dbpool, t, func(tx pgx.Tx) {
 		// Initialize repositories
-		userRepo := &postgres.UserRepo{DB: tx}
-		refreshRepo := &postgres.RefreshTokenRepo{DB: tx}
-		orderRepo := &postgres.OrderRepo{DB: tx}
+		storage := postgres.NewStorage(tx)
 
 		// Initialize services
-		tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: "test-secret"}, refreshRepo)
+		tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: "test-secret"}, storage)
 		require.NoError(t, err, "token manager should be created without errors")
 
-		orderService := order.NewService(orderRepo)
-		userService := user.NewService(user.DefaultHasher, userRepo)
+		orderService := order.NewService(storage)
+		userService := user.NewService(user.DefaultHasher, storage)
 
 		authService, err := auth.NewService(auth.Config{}, tokenManager, userService)
 		require.NoError(t, err, "auth service starting error", err)

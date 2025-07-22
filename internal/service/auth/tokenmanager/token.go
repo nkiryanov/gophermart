@@ -54,10 +54,10 @@ type TokenManager struct {
 	refreshTTL time.Duration
 
 	// Refresh token repo
-	refreshRepo repository.RefreshTokenRepo
+	storage repository.Storage
 }
 
-func New(cfg Config, refreshRepo repository.RefreshTokenRepo) (*TokenManager, error) {
+func New(cfg Config, storage repository.Storage) (*TokenManager, error) {
 	if cfg.SecretKey == "" {
 		return nil, errors.New("secret key must not be empty")
 	}
@@ -75,11 +75,11 @@ func New(cfg Config, refreshRepo repository.RefreshTokenRepo) (*TokenManager, er
 	setDefaultDuration(&cfg.RefreshTTL, defaultRefreshTokenTTL)
 
 	return &TokenManager{
-		key:         cfg.SecretKey,
-		alg:         jwt.GetSigningMethod(cfg.Alg),
-		accessTTL:   cfg.AccessTTL,
-		refreshTTL:  cfg.RefreshTTL,
-		refreshRepo: refreshRepo,
+		key:        cfg.SecretKey,
+		alg:        jwt.GetSigningMethod(cfg.Alg),
+		accessTTL:  cfg.AccessTTL,
+		refreshTTL: cfg.RefreshTTL,
+		storage:    storage,
 	}, nil
 }
 
@@ -114,7 +114,7 @@ func (m *TokenManager) GeneratePair(ctx context.Context, user models.User) (mode
 	}
 	refresh := hex.EncodeToString(b)
 
-	_, err = m.refreshRepo.Save(ctx, models.RefreshToken{
+	_, err = m.storage.Refresh().Save(ctx, models.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    user.ID,
 		Token:     refresh,
@@ -134,7 +134,7 @@ func (m *TokenManager) GeneratePair(ctx context.Context, user models.User) (mode
 
 // Use token: return if it valid and mark as used
 func (m *TokenManager) UseRefresh(ctx context.Context, refresh string) (models.RefreshToken, error) {
-	token, err := m.refreshRepo.GetAndMarkUsed(ctx, refresh)
+	token, err := m.storage.Refresh().GetAndMarkUsed(ctx, refresh)
 	if err != nil {
 		return token, fmt.Errorf("error while marking token used. Err: %w", err)
 	}

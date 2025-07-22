@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -82,11 +83,14 @@ func StartPostgresContainer(t *testing.T) PostgresContainer {
 
 type dbtx interface {
 	Begin(context.Context) (pgx.Tx, error)
+	Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...interface{}) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...interface{}) pgx.Row
 }
 
 // Create db transaction and rollback at test end
 // So you may be sure db remains unchanged when test stops
-func WithTx(dbtx dbtx, t *testing.T, testFunc func(tx pgx.Tx)) {
+func InTx(dbtx dbtx, t *testing.T, testFunc func(tx pgx.Tx)) {
 	tx, err := dbtx.Begin(t.Context())
 	require.NoError(t, err)
 

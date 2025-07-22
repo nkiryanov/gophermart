@@ -37,7 +37,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 	}
 
 	t.Run("create token ok", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+		testutil.InTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
 
 			got, err := repo.Save(t.Context(), token)
@@ -53,7 +53,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 	})
 
 	t.Run("get token ok", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+		testutil.InTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Save(t.Context(), token)
 			require.NoError(t, err)
@@ -70,7 +70,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 	})
 
 	t.Run("mark token used", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+		testutil.InTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Save(t.Context(), token)
 			require.NoError(t, err)
@@ -88,7 +88,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 	})
 
 	t.Run("mark used not existed token", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+		testutil.InTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
 
 			_, err := repo.GetAndMarkUsed(t.Context(), token.Token)
@@ -99,7 +99,7 @@ func Test_RefreshTokenRepo(t *testing.T) {
 	})
 
 	t.Run("mark used is idempotent", func(t *testing.T) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
+		testutil.InTx(pg.Pool, t, func(tx pgx.Tx) {
 			repo := RefreshTokenRepo{DB: tx}
 			_, err := repo.Save(t.Context(), token)
 			require.NoError(t, err)

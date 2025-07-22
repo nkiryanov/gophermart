@@ -26,10 +26,9 @@ func Test_Auth(t *testing.T) {
 
 	// Begin new db transaction and create new AuthService
 	// Rollback transaction when test stops
-	withTx := func(dbpool *pgxpool.Pool, accessTTL time.Duration, refreshTTL time.Duration, t *testing.T, fn func(s *AuthService)) {
-		testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
-			userRepo := &postgres.UserRepo{DB: tx}
-			refreshRepo := &postgres.RefreshTokenRepo{DB: tx}
+	inTx := func(dbpool *pgxpool.Pool, accessTTL time.Duration, refreshTTL time.Duration, t *testing.T, fn func(s *AuthService)) {
+		testutil.InTx(dbpool, t, func(tx pgx.Tx) {
+			storage := postgres.NewStorage(tx)
 
 			tokenManager, err := tokenmanager.New(
 				tokenmanager.Config{
@@ -37,11 +36,11 @@ func Test_Auth(t *testing.T) {
 					AccessTTL:  accessTTL,
 					RefreshTTL: refreshTTL,
 				},
-				refreshRepo,
+				storage,
 			)
 			require.NoError(t, err, "token manager should be created without errors")
 
-			userService := user.NewService(user.DefaultHasher, userRepo)
+			userService := user.NewService(user.DefaultHasher, storage)
 
 			s, err := NewService(Config{}, tokenManager, userService)
 			require.NoError(t, err, "auth service could't be started", err)
@@ -61,7 +60,7 @@ func Test_Auth(t *testing.T) {
 
 	t.Run("Register", func(t *testing.T) {
 		t.Run("new user ok", func(t *testing.T) {
-			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+			inTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				pair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 
 				require.NoError(t, err, "registering new user should be ok")
@@ -71,7 +70,7 @@ func Test_Auth(t *testing.T) {
 		})
 
 		t.Run("fail if user exists", func(t *testing.T) {
-			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+			inTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				_, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err, "no error has should happen if user not exists")
 
@@ -85,7 +84,7 @@ func Test_Auth(t *testing.T) {
 
 	t.Run("Login", func(t *testing.T) {
 		t.Run("existing user ok", func(t *testing.T) {
-			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+			inTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				_, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err)
 
@@ -119,7 +118,7 @@ func Test_Auth(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+				inTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 					_, err := s.Register(t.Context(), "nkiryanov", "pwd")
 					require.NoError(t, err)
 
@@ -135,7 +134,7 @@ func Test_Auth(t *testing.T) {
 
 	t.Run("RefreshPair", func(t *testing.T) {
 		t.Run("refresh once ok", func(t *testing.T) {
-			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+			inTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				// Register user and get initial token pair
 				initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err)
@@ -150,7 +149,7 @@ func Test_Auth(t *testing.T) {
 		})
 
 		t.Run("fail if used once", func(t *testing.T) {
-			withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+			inTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 				// Register user and get token pair
 				initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err)
@@ -167,7 +166,7 @@ func Test_Auth(t *testing.T) {
 		})
 
 		t.Run("fail if expired", func(t *testing.T) {
-			withTx(pg.Pool, 1*time.Second, 1*time.Second, t, func(s *AuthService) {
+			inTx(pg.Pool, 1*time.Second, 1*time.Second, t, func(s *AuthService) {
 				// Register user and get token pair
 				initialPair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 				require.NoError(t, err)
@@ -183,7 +182,7 @@ func Test_Auth(t *testing.T) {
 	})
 
 	t.Run("SetTokenPairToResponse", func(t *testing.T) {
-		withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+		inTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 			// Create new valid token pair
 			pair, err := s.Register(t.Context(), "nkiryanov", "pwd")
 			require.NoError(t, err)
@@ -218,7 +217,7 @@ func Test_Auth(t *testing.T) {
 	})
 
 	t.Run("GetRefreshString", func(t *testing.T) {
-		withTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
+		inTx(pg.Pool, 15*time.Minute, 24*time.Hour, t, func(s *AuthService) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				token, err := s.GetRefreshString(r)
 				if err != nil {
@@ -263,7 +262,7 @@ func Test_Auth(t *testing.T) {
 	})
 
 	t.Run("Auth", func(t *testing.T) {
-		withTx(pg.Pool, time.Second, time.Hour, t, func(s *AuthService) {
+		inTx(pg.Pool, time.Second, time.Hour, t, func(s *AuthService) {
 			_, err := s.Register(t.Context(), "nk", "pwd")
 			require.NoError(t, err)
 

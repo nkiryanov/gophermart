@@ -9,21 +9,21 @@ import (
 
 type OrderService struct {
 	// Repository to access long term data
-	orderRepo repository.OrderRepo
+	storage repository.Storage
 }
 
-func NewService(orderRepo repository.OrderRepo) *OrderService {
+func NewService(storage repository.Storage) *OrderService {
 	return &OrderService{
-		orderRepo: orderRepo,
+		storage: storage,
 	}
 }
 
 type OrderOption func(*models.Order)
 
 func (s *OrderService) CreateOrder(ctx context.Context, number string, user *models.User, opts ...models.OrderOption) (models.Order, error) {
-	return s.orderRepo.CreateOrder(ctx, number, user.ID, opts...)
+	return s.storage.Order().CreateOrder(ctx, number, user.ID, opts...)
 }
 
 func (s *OrderService) ListOrders(ctx context.Context, user *models.User) ([]models.Order, error) {
-	return s.orderRepo.ListOrders(ctx, user.ID)
+	return s.storage.Order().ListOrders(ctx, user.ID)
 }

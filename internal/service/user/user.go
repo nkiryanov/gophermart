@@ -25,18 +25,18 @@ type PasswordHasher interface {
 }
 
 type UserService struct {
-	hasher   PasswordHasher
-	userRepo repository.UserRepo
+	hasher  PasswordHasher
+	storage repository.Storage
 }
 
-func NewService(hasher PasswordHasher, userRepo repository.UserRepo) *UserService {
+func NewService(hasher PasswordHasher, storage repository.Storage) *UserService {
 	if hasher == nil {
 		hasher = DefaultHasher
 	}
 
 	return &UserService{
-		hasher:   hasher,
-		userRepo: userRepo,
+		hasher:  hasher,
+		storage: storage,
 	}
 }
 
@@ -51,7 +51,7 @@ func (s *UserService) CreateUser(ctx context.Context, username string, password 
 		return user, fmt.Errorf("can't use this as password, Err: %w", err)
 	}
 
-	user, err = s.userRepo.CreateUser(ctx, username, hash)
+	user, err = s.storage.User().CreateUser(ctx, username, hash)
 	if err != nil {
 		return user, fmt.Errorf("can't create user. Err: %w", err)
 	}
@@ -62,7 +62,7 @@ func (s *UserService) CreateUser(ctx context.Context, username string, password 
 func (s *UserService) Login(ctx context.Context, username string, password string) (models.User, error) {
 	// Ignore error for now, but prefer to log it
 	// It's safe to use user now, because it's always not empty
-	user, _ := s.userRepo.GetUserByUsername(ctx, username)
+	user, _ := s.storage.User().GetUserByUsername(ctx, username)
 
 	// Always compare password to prevent timing attacks
 	// It will always fail if user not found
@@ -75,5 +75,5 @@ func (s *UserService) Login(ctx context.Context, username string, password strin
 }
 
 func (s *UserService) GetUserByID(ctx context.Context, userID uuid.UUID) (models.User, error) {
-	return s.userRepo.GetUserByID(ctx, userID)
+	return s.storage.User().GetUserByID(ctx, userID)
 }
