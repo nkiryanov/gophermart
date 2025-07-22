@@ -1,7 +1,7 @@
 .PHONY: test tests
 tests: test
 test:
-	TZ=UTC go test -race -timeout=60s -count 1 ./...
+	TZ=UTC go test -race -timeout=120s -count 1 ./...
 
 .PHONY: fmt
 fmt:

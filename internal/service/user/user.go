@@ -89,3 +89,7 @@ func (s *UserService) Login(ctx context.Context, username string, password strin
 func (s *UserService) GetUserByID(ctx context.Context, userID uuid.UUID) (models.User, error) {
 	return s.storage.User().GetUserByID(ctx, userID)
 }
+
+func (s *UserService) GetBalance(ctx context.Context, userID uuid.UUID) (models.Balance, error) {
+	return s.storage.Balance().GetBalance(ctx, userID)
+}

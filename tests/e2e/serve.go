@@ -46,11 +46,13 @@ func ServeInTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL str
 		authHandler := handlers.NewAuth(authService)
 		authMiddleware := middleware.NewAuth(authService)
 		orderHandler := handlers.NewOrder(orderService)
+		balanceHandler := handlers.NewBalance(userService)
 
 		// Complete all together as router
 		router := handlers.NewRouter(
 			authHandler,
 			orderHandler,
+			balanceHandler,
 			authMiddleware,
 		)
 

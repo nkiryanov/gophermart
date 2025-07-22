@@ -135,4 +135,21 @@ func TestUser(t *testing.T) {
 			})
 		})
 	})
+
+	t.Run("GetBalance", func(t *testing.T) {
+		t.Run("new user", func(t *testing.T) {
+			withTx(t, func(s *UserService) {
+				// Create user first
+				createdUser, err := s.CreateUser(t.Context(), "test-user", "password123")
+				require.NoError(t, err)
+
+				balance, err := s.GetBalance(t.Context(), createdUser.ID)
+
+				require.NoError(t, err, "getting balance for new user should succeed")
+				require.Equal(t, createdUser.ID, balance.UserID, "balance user ID should match")
+				require.True(t, balance.Current.IsZero(), "initial balance should be zero")
+				require.True(t, balance.Withdrawn.IsZero(), "initial withdrawn should be zero")
+			})
+		})
+	})
 }

@@ -9,7 +9,12 @@ import (
 
 type middleware func(next http.Handler) http.Handler
 
-func NewRouter(authHandler *AuthHandler, orderHandler *OrderHandler, authMiddleware middleware) http.Handler {
+func NewRouter(
+	authHandler *AuthHandler,
+	orderHandler *OrderHandler,
+	balanceHandler *BalanceHandler,
+	authMiddleware middleware,
+) http.Handler {
 	withAuth := func(h http.Handler) http.Handler {
 		return authMiddleware(h)
 	}
@@ -21,6 +26,7 @@ func NewRouter(authHandler *AuthHandler, orderHandler *OrderHandler, authMiddlew
 	apiuser.Handle("/refresh", authHandler.Handler())
 
 	apiuser.Handle("/orders", withAuth(orderHandler.Handler()))
+	apiuser.Handle("/balance", withAuth(balanceHandler.Handler()))
 
 	apiuser.Handle("GET /me", withAuth(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

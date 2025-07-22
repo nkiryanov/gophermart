@@ -5,8 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/shopspring/decimal"
 

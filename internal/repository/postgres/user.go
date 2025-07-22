@@ -58,7 +58,6 @@ func (r *UserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (models.User, 
 	}
 }
 
-
 func (r *UserRepo) GetUserByUsername(ctx context.Context, username string) (models.User, error) {
 	const getUserByUsername = `
 	SELECT * FROM users

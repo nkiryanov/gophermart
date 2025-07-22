@@ -64,7 +64,7 @@ func Test_OrdersCreate(t *testing.T) {
 				require.NoError(t, err, "failed to unmarshal response body")
 
 				assert.Equal(t, "123", response.Number, "order number should match")
-				assert.Equal(t, models.OrderNew, response.Status, "order status should be 'new'")
+				assert.Equal(t, "NEW", response.Status, "order status should be 'new'")
 				assert.WithinDuration(t, time.Now(), response.UploadedAt, time.Second, "uploaded_at should be close to now")
 
 			})
@@ -72,7 +72,7 @@ func Test_OrdersCreate(t *testing.T) {
 
 		t.Run("create twice ok", func(t *testing.T) {
 			testutil.InTx(tx, t, func(_ pgx.Tx) {
-				order, err := s.OrderService.CreateOrder(t.Context(), "123", &user)
+				order, err := s.OrderService.CreateOrder(t.Context(), "123", &user, models.WithOrderStatus(models.OrderProcessed))
 				require.NoError(t, err, "order has to be created ok")
 
 				req := authReq("test-user", "pwd", "123", t)
@@ -87,8 +87,8 @@ func Test_OrdersCreate(t *testing.T) {
 				err = json.Unmarshal(body, &response)
 				require.NoError(t, err, "failed to unmarshal response body")
 
-				assert.Equal(t, order.Number, response.Number, "order number should match")
-				assert.Equal(t, order.Status, response.Status, "order status should match")
+				assert.Equal(t, "123", response.Number)
+				assert.Equal(t, "PROCESSED", response.Status, "order status should be 'processed'")
 				assert.Equal(t, order.UploadedAt.UTC(), response.UploadedAt.UTC(), "uploaded_at should be the same for the same order")
 			})
 		})
