@@ -24,12 +24,12 @@ func Test_AuthRefresh(t *testing.T) {
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	e2e.ServeWithTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
+	e2e.ServeInTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
 		pair, err := s.AuthService.Register(t.Context(), "nk", "StrongEnoughPassword")
 		require.NoError(t, err)
 
 		t.Run("refresh token ok", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				// Create request and set auth cookies. Save them to verify they are rolled later
 				req, err := http.NewRequest(http.MethodPost, srvURL+RefreshURL, nil)
 				require.NoError(t, err)
@@ -63,7 +63,7 @@ func Test_AuthRefresh(t *testing.T) {
 		})
 
 		t.Run("refresh refresh twice fail", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				// Create request and set auth cookies. Save them to verify they are rolled later
 				createRequest := func(pair models.TokenPair) *http.Request {
 					req, err := http.NewRequest(http.MethodPost, srvURL+RefreshURL, nil)

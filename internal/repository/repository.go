@@ -7,12 +7,6 @@ import (
 	"github.com/nkiryanov/gophermart/internal/models"
 )
 
-type Repos struct {
-	UserRepo    UserRepo
-	RefreshRepo RefreshTokenRepo
-	OrderRepo   OrderRepo
-}
-
 // User repository interface
 type UserRepo interface {
 	// Create user
@@ -44,4 +38,13 @@ type RefreshTokenRepo interface {
 type OrderRepo interface {
 	CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...models.OrderOption) (models.Order, error)
 	ListOrders(ctx context.Context, userID uuid.UUID) ([]models.Order, error)
+}
+
+type Storage interface {
+	User() UserRepo
+	Refresh() RefreshTokenRepo
+	Order() OrderRepo
+
+	// InTx starts a transaction, executes the provided function, and commits or rolls back based on the function's error.
+	InTx(ctx context.Context, fn func(Storage) error) error
 }

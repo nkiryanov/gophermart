@@ -36,17 +36,15 @@ func NewServerApp(ctx context.Context) (*ServerApp, error) {
 	}
 
 	// Initialize repositories
-	userRepo := &postgres.UserRepo{DB: pool}
-	refreshRepo := &postgres.RefreshTokenRepo{DB: pool}
-	orderRepo := &postgres.OrderRepo{DB: pool}
+	storage := postgres.NewStorage(pool)
 
 	// Initialize services
-	tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: SecretKey}, refreshRepo)
+	tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: SecretKey}, storage)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating token manager")
 	}
-	userService := user.NewService(user.DefaultHasher, userRepo)
-	orderService := order.NewService(orderRepo)
+	userService := user.NewService(user.DefaultHasher, storage)
+	orderService := order.NewService(storage)
 	authService, err := auth.NewService(auth.Config{}, tokenManager, userService)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating auth service. Err: %w", err)

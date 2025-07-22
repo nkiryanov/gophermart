@@ -20,9 +20,9 @@ func TestUser(t *testing.T) {
 
 	// Helper function to create UserService within transaction
 	withTx := func(t *testing.T, fn func(s *UserService)) {
-		testutil.WithTx(pg.Pool, t, func(tx pgx.Tx) {
-			userRepo := &postgres.UserRepo{DB: tx}
-			userService := NewService(DefaultHasher, userRepo)
+		testutil.InTx(pg.Pool, t, func(tx pgx.Tx) {
+			storage := postgres.NewStorage(tx)
+			userService := NewService(DefaultHasher, storage)
 			fn(userService)
 		})
 	}

@@ -109,6 +109,6 @@ func (h *OrderHandler) list(w http.ResponseWriter, r *http.Request) {
 			resp[i].Accrual = &order.Accrual
 		}
 	}
-	
+
 	render.JSON(w, resp)
 }

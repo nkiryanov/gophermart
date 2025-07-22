@@ -24,9 +24,9 @@ func Test_AuthRegister(t *testing.T) {
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	e2e.ServeWithTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
+	e2e.ServeInTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
 		t.Run("register ok", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				data := `{"login": "nk", "password": "StrongEnoughPassword"}`
 
 				resp, err := http.Post(srvURL+RegisterURL, "application/json", strings.NewReader(data))
@@ -57,7 +57,7 @@ func Test_AuthRegister(t *testing.T) {
 		})
 
 		t.Run("register existed user fails", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				_, err := s.AuthService.Register(t.Context(), "nk", "StrongEnoughPassword")
 				require.NoError(t, err)
 

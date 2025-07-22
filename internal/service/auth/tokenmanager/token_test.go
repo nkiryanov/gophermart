@@ -38,15 +38,15 @@ func Test_TokenManager(t *testing.T) {
 	}
 
 	withTx := func(dbpool *pgxpool.Pool, t *testing.T, accessTTL time.Duration, refreshTTL time.Duration, fn func(m *TokenManager)) {
-		testutil.WithTx(dbpool, t, func(tx pgx.Tx) {
+		testutil.InTx(dbpool, t, func(tx pgx.Tx) {
 			cfg := Config{
 				SecretKey:  "test-secret-key",
 				AccessTTL:  accessTTL,
 				RefreshTTL: refreshTTL,
 			}
-			refreshRepo := postgres.RefreshTokenRepo{DB: tx}
+			storage := postgres.NewStorage(tx)
 
-			tokenManager, err := New(cfg, &refreshRepo)
+			tokenManager, err := New(cfg, storage)
 			require.NoError(t, err, "token manager should be created without errors")
 
 			fn(tokenManager)

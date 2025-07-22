@@ -24,12 +24,12 @@ func Test_Login(t *testing.T) {
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	e2e.ServeWithTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
+	e2e.ServeInTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
 		_, err := s.AuthService.Register(t.Context(), "nk", "StrongEnoughPassword")
 		require.NoError(t, err)
 
 		t.Run("login ok", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				data := `{"login": "nk", "password": "StrongEnoughPassword"}`
 				resp, err := http.Post(srvURL+LoginURL, "application/json", strings.NewReader(data))
 				require.NoError(t, err)
@@ -60,7 +60,7 @@ func Test_Login(t *testing.T) {
 		})
 
 		t.Run("login failed", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				data := `{"login": "nk", "password": "WrongPassword"}`
 
 				resp, err := http.Post(srvURL+LoginURL, "application/json", strings.NewReader(data))

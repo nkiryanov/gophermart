@@ -25,7 +25,7 @@ func Test_OrdersList(t *testing.T) {
 	pg := testutil.StartPostgresContainer(t)
 	t.Cleanup(pg.Terminate)
 
-	e2e.ServeWithTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
+	e2e.ServeInTx(pg.Pool, t, func(tx pgx.Tx, srvURL string, s e2e.Services) {
 		user, err := s.UserService.CreateUser(t.Context(), "test-user", "pwd")
 		require.NoError(t, err)
 
@@ -39,7 +39,7 @@ func Test_OrdersList(t *testing.T) {
 		}
 
 		t.Run("empty list", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				req := authReq("test-user", "pwd", t)
 				resp, err := http.DefaultClient.Do(req)
 				require.NoError(t, err, "failed to send request")
@@ -53,7 +53,7 @@ func Test_OrdersList(t *testing.T) {
 		})
 
 		t.Run("list all orders", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				_, err := s.OrderService.CreateOrder(t.Context(), "111", &user,
 					models.WithOrderStatus(models.OrderNew),
 					models.WithUploadedAt(time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)),
@@ -95,7 +95,7 @@ func Test_OrdersList(t *testing.T) {
 		})
 
 		t.Run("unauthorized request", func(t *testing.T) {
-			testutil.WithTx(tx, t, func(_ pgx.Tx) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				req, err := http.NewRequest(http.MethodGet, srvURL+OrderListURL, nil)
 				require.NoError(t, err, "failed to create request")
 
