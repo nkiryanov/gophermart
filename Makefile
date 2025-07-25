@@ -18,4 +18,6 @@ generate:
 
 .PHONE: build
 build:
+	cd cmd/gensecret && go build .
 	cd cmd/gophermart && go build .
+

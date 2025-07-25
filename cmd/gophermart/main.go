@@ -14,18 +14,22 @@ import (
 func main() {
 	ctx := context.Background()
 
-	err := run(ctx, os.Getenv, os.Args[1:])
+	err := run(ctx, os.Getenv, os.Getwd, os.Args[1:])
 	if err != nil {
 		slog.Error("Application error", "error", err.Error())
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, getenv func(string) string, args []string) error {
+func run(ctx context.Context, getenv func(string) string, getwd func() (string, error), args []string) error {
 	// Load configuration from environment variables and flags
 	config := NewConfig()
+	err := config.LoadDotEnv(getwd)
+	if err != nil {
+		return fmt.Errorf("error while loading .env file: %w", err)
+	}
 	config.LoadEnv(getenv)
-	err := config.ParseFlags(args)
+	err = config.ParseFlags(args)
 	if err != nil {
 		return fmt.Errorf("error while parsing flags: %w", err)
 	}

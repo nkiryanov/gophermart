@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -21,10 +22,9 @@ func Test_run(t *testing.T) {
 	t.Run("stop with signal", func(t *testing.T) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond) // Half Second
-		getenv := func(key string) string { return "" }
 		t.Cleanup(cancel)
 
-		err = run(ctx, getenv, []string{
+		err = run(ctx, os.Getenv, os.Getwd, []string{
 			"--address", listenAddr,
 			"--log-level", "debug",
 			"--accrual", "http://localhost:3000",
@@ -37,11 +37,10 @@ func Test_run(t *testing.T) {
 
 	t.Run("stop with srv error", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond) // Half Second
-		getenv := func(key string) string { return "" }
 		t.Cleanup(cancel)
 
 		// Try to run without secret key. Must fail
-		err := run(ctx, getenv, []string{
+		err := run(ctx, os.Getenv, os.Getwd, []string{
 			"--address", listenAddr,
 			"--log-level", "debug",
 			"--accrual", "http://localhost:3000",
