@@ -64,7 +64,7 @@ func (c *Config) ParseFlags(args []string) error {
 
 	fs.StringVarP(&c.ListenAddr, "address", "a", c.ListenAddr, "Server listen address")
 	fs.StringVarP(&c.DatabaseDSN, "database", "d", c.DatabaseDSN, "Database connection string")
-	fs.StringVarP(&c.SecretKey, "secret", "s", c.SecretKey, "Secret key")
+	fs.StringVarP(&c.SecretKey, "secret-key", "s", c.SecretKey, "Secret key")
 	fs.StringVarP(&c.LogLevel, "log-level", "l", c.LogLevel, "Logging level (debug, info, warn, error)")
 	fs.StringVarP(&c.AccrualAddr, "accrual", "r", c.AccrualAddr, "Accrual service address")
 

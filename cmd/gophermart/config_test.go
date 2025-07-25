@@ -68,7 +68,7 @@ func TestConfig(t *testing.T) {
 						"--log-level", "debug",
 						"--accrual", "localhost:4000",
 						"--database", "postgres://user:pass@localhost:5432/test",
-						"--secret", "secret",
+						"--secret-key", "secret",
 					},
 				},
 			}

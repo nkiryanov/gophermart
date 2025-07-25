@@ -17,20 +17,14 @@ import (
 	"github.com/nkiryanov/gophermart/internal/service/user"
 )
 
-const (
-	DSN        = "postgres://gophermart:gophermart@localhost:25432/gophermart?sslmode=disable"
-	ListenAddr = "127.0.0.1:8000"
-	SecretKey  = "secret"
-)
-
 type ServerApp struct {
 	ListenAddr string
 	Handler    http.Handler
 }
 
-func NewServerApp(ctx context.Context) (*ServerApp, error) {
+func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 	// Connect to the database and run migrations
-	pool, err := db.ConnectAndMigrate(ctx, DSN)
+	pool, err := db.ConnectAndMigrate(ctx, c.DatabaseDSN)
 	if err != nil {
 		return nil, fmt.Errorf("error while connecting to db. Err: %w", err)
 	}
@@ -39,7 +33,7 @@ func NewServerApp(ctx context.Context) (*ServerApp, error) {
 	storage := postgres.NewStorage(pool)
 
 	// Initialize services
-	tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: SecretKey}, storage)
+	tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: c.SecretKey}, storage)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating token manager")
 	}
@@ -59,7 +53,7 @@ func NewServerApp(ctx context.Context) (*ServerApp, error) {
 	mux := handlers.NewRouter(authHandler, orderHandler, balanceHandler, authMiddleware)
 
 	return &ServerApp{
-		ListenAddr: ListenAddr,
+		ListenAddr: c.ListenAddr,
 		Handler:    mux,
 	}, nil
 }

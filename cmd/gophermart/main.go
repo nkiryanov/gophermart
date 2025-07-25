@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"net/http"
@@ -13,26 +14,37 @@ import (
 func main() {
 	ctx := context.Background()
 
-	srv, err := NewServerApp(ctx)
+	err := run(ctx, os.Getenv, os.Args[1:])
 	if err != nil {
-		slog.Error("can't initialize app, sorry", "error", err.Error())
+		slog.Error("Application error", "error", err.Error())
 		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, getenv func(string) string, args []string) error {
+	// Load configuration from environment variables and flags
+	config := NewConfig()
+	config.LoadEnv(getenv)
+	err := config.ParseFlags(args)
+	if err != nil {
+		return fmt.Errorf("error while parsing flags: %w", err)
 	}
 
 	// Initialize context that cancelled on SIGTERM
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	go func() {
-		stop := make(chan os.Signal, 1)
-		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-		<-stop
-		slog.Warn("Interrupt signal")
-		cancel()
-	}()
+	// Initialize server application
+	srv, err := NewServerApp(ctx, config)
+	if err != nil {
+		return fmt.Errorf("error while initializing app: %w", err)
+	}
 
 	// Run server
-	if err := srv.Run(ctx); err != http.ErrServerClosed {
-		slog.Error("HTTP server error", "error", err.Error())
+	err = srv.Run(ctx)
+	if err != http.ErrServerClosed {
+		return fmt.Errorf("server stopped with error: %w", err)
 	}
+
+	return nil
 }
