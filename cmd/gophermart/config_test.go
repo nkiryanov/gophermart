@@ -31,6 +31,7 @@ func TestConfig(t *testing.T) {
 		require.Equal(t, defaultListenAddr, c.ListenAddr, "listen address should be default")
 		require.Equal(t, defaultLoggingLevel, c.LogLevel, "logging level should be default")
 		require.Equal(t, defaultAccrualAddr, c.AccrualAddr, "accrual address should be default")
+		require.Equal(t, defaultEnvironment, c.Environment, "environment should be default")
 		require.Equal(t, "", c.DatabaseDSN, "database DSN should be empty by default")
 		require.Equal(t, "", c.SecretKey, "secret key should be empty by default")
 	})
@@ -44,6 +45,7 @@ LOG_LEVEL=debug
 ACCRUAL_SYSTEM_ADDRESS=localhost:4000
 DATABASE_URI=postgres://user:pass@localhost:5432/test
 SECRET_KEY=secret
+ENVIRONMENT=dev
 `
 			err := os.WriteFile(filepath.Join(workDir, ".env"), []byte(fileContent), 0644)
 			require.NoError(t, err, "error while preparing .env file")
@@ -57,6 +59,7 @@ SECRET_KEY=secret
 			require.Equal(t, "localhost:4000", c.AccrualAddr)
 			require.Equal(t, "postgres://user:pass@localhost:5432/test", c.DatabaseDSN)
 			require.Equal(t, "secret", c.SecretKey)
+			require.Equal(t, "dev", c.Environment, "environment should be set from .env file")
 		})
 
 		t.Run("not fail if no file", func(t *testing.T) {
@@ -70,6 +73,7 @@ SECRET_KEY=secret
 			require.Equal(t, defaultListenAddr, c.ListenAddr, "should be default value")
 			require.Equal(t, defaultLoggingLevel, c.LogLevel)
 			require.Equal(t, defaultAccrualAddr, c.AccrualAddr)
+			require.Equal(t, defaultEnvironment, c.Environment)
 			require.Equal(t, "", c.DatabaseDSN)
 			require.Equal(t, "", c.SecretKey)
 		})
@@ -89,6 +93,8 @@ SECRET_KEY=secret
 				return "postgres://user:pass@localhost:5432/test"
 			case "SECRET_KEY":
 				return "secret"
+			case "ENVIRONMENT":
+				return "dev"
 			default:
 				return ""
 			}
@@ -101,6 +107,7 @@ SECRET_KEY=secret
 		require.Equal(t, "localhost:4000", c.AccrualAddr)
 		require.Equal(t, "postgres://user:pass@localhost:5432/test", c.DatabaseDSN)
 		require.Equal(t, "secret", c.SecretKey)
+		require.Equal(t, "dev", c.Environment, "environment should be set from environment variables")
 	})
 
 	t.Run("parse flags", func(t *testing.T) {
@@ -117,6 +124,7 @@ SECRET_KEY=secret
 						"-r", "localhost:4000",
 						"-d", "postgres://user:pass@localhost:5432/test",
 						"-s", "secret",
+						"-e", "dev",
 					},
 				},
 				{
@@ -127,6 +135,7 @@ SECRET_KEY=secret
 						"--accrual", "localhost:4000",
 						"--database", "postgres://user:pass@localhost:5432/test",
 						"--secret-key", "secret",
+						"--environment", "dev",
 					},
 				},
 			}
@@ -143,7 +152,7 @@ SECRET_KEY=secret
 					require.Equal(t, "localhost:4000", c.AccrualAddr)
 					require.Equal(t, "postgres://user:pass@localhost:5432/test", c.DatabaseDSN)
 					require.Equal(t, "secret", c.SecretKey)
-
+					require.Equal(t, "dev", c.Environment, "environment should be set from flags")
 				})
 			}
 		})

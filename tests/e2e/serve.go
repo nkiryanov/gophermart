@@ -44,7 +44,7 @@ func ServeInTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL str
 
 		// Initializer handlers
 		authHandler := handlers.NewAuth(authService)
-		authMiddleware := middleware.NewAuth(authService)
+		authMiddleware := middleware.AuthMiddleware(authService)
 		orderHandler := handlers.NewOrder(orderService)
 		balanceHandler := handlers.NewBalance(userService)
 

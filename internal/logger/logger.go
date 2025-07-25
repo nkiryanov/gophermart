@@ -38,6 +38,17 @@ type slogLogger struct {
 	logger *slog.Logger
 }
 
+func New(environment string, level string) (Logger, error) {
+	switch environment {
+	case EnvDevelopment:
+		return NewDevLogger(level)
+	case EnvProduction:
+		return NewProdLogger(level)
+	default:
+		return nil, errors.New("unknown environment")
+	}
+}
+
 // Creates new default logger
 // Should be used only on application startup, when logger configuration from cli or environment is not available
 func NewDefault() Logger {
@@ -55,7 +66,7 @@ func NewDefault() Logger {
 
 // Creates a new text logger with the specified level
 func NewTextLogger(level string) (Logger, error) {
-	l, err := parseLevelString(level)
+	l, err := parseLevel(level)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +85,7 @@ func NewTextLogger(level string) (Logger, error) {
 
 // Creates a new JSON logger with the specified level
 func NewJSONLogger(level string) (Logger, error) {
-	l, err := parseLevelString(level)
+	l, err := parseLevel(level)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +143,7 @@ func (l *slogLogger) WithGroup(name string) Logger {
 	return &slogLogger{logger: l.logger.WithGroup(name)}
 }
 
-func parseLevelString(level string) (slog.Level, error) {
+func parseLevel(level string) (slog.Level, error) {
 	switch strings.ToLower(level) {
 	case LevelDebug:
 		return slog.LevelDebug, nil
@@ -147,9 +158,15 @@ func parseLevelString(level string) (slog.Level, error) {
 	}
 }
 
-// Remove the directory from the source's filename
-// Implementation copy-pasted from https://pkg.go.dev/log/slog@go1.24.5#example-package-Wrapping
+// Custom replace function with time formatting for all loggers
 func replace(groups []string, a slog.Attr) slog.Attr {
+	// Handle time formatting
+	if a.Key == slog.TimeKey {
+		t := a.Value.Time()
+		return slog.String(slog.TimeKey, t.Format("2006/01/02 15:04:05"))
+	}
+
+	// Handle source formatting (remove directory)
 	if a.Key == slog.SourceKey {
 		source := a.Value.Any().(*slog.Source)
 		source.File = filepath.Base(source.File)
@@ -159,7 +176,7 @@ func replace(groups []string, a slog.Attr) slog.Attr {
 }
 
 // Log with correct source
-// / Implementation inspired by https://pkg.go.dev/log/slog@go1.24.5#example-package-Wrapping
+// Implementation inspired by https://pkg.go.dev/log/slog@go1.24.5#example-package-Wrapping
 func (l *slogLogger) logWithSource(level slog.Level, msg string, args ...any) {
 	if !l.logger.Enabled(context.Background(), level) {
 		return

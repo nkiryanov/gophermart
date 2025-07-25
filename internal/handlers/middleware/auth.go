@@ -13,23 +13,16 @@ type authService interface {
 	Auth(ctx context.Context, r *http.Request) (models.User, error)
 }
 
-type AuthMiddleware struct {
-	authService authService
-}
-
-func NewAuth(authService authService) func(next http.Handler) http.Handler {
-	m := AuthMiddleware{authService: authService}
-	return m.Auth
-}
-
-func (m *AuthMiddleware) Auth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, err := m.authService.Auth(r.Context(), r)
-		if err != nil {
-			render.ServiceError(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		ctx := handlers.NewContextWithUser(r.Context(), user)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+func AuthMiddleware(as authService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, err := as.Auth(r.Context(), r)
+			if err != nil {
+				render.ServiceError(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			ctx := handlers.NewContextWithUser(r.Context(), user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

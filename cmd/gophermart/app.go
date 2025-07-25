@@ -10,6 +10,7 @@ import (
 	"github.com/nkiryanov/gophermart/internal/db"
 	"github.com/nkiryanov/gophermart/internal/handlers"
 	"github.com/nkiryanov/gophermart/internal/handlers/middleware"
+	"github.com/nkiryanov/gophermart/internal/logger"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
@@ -24,6 +25,10 @@ type ServerApp struct {
 
 func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 	// Initialize logger
+	logger, err := logger.New(c.Environment, c.LogLevel)
+	if err != nil {
+		return nil, fmt.Errorf("error while initializing logger: %w", err)
+	}
 
 	// Connect to the database and run migrations
 	pool, err := db.ConnectAndMigrate(ctx, c.DatabaseDSN)
@@ -50,9 +55,15 @@ func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 	authHandler := handlers.NewAuth(authService)
 	orderHandler := handlers.NewOrder(orderService)
 	balanceHandler := handlers.NewBalance(userService)
-	authMiddleware := middleware.NewAuth(authService)
+	authMiddleware := middleware.AuthMiddleware(authService)
 
-	mux := handlers.NewRouter(authHandler, orderHandler, balanceHandler, authMiddleware)
+	mux := handlers.NewRouter(
+		authHandler,
+		orderHandler,
+		balanceHandler,
+		authMiddleware,
+		middleware.LoggerMiddleware(logger),
+	)
 
 	return &ServerApp{
 		ListenAddr: c.ListenAddr,

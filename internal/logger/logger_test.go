@@ -35,7 +35,7 @@ func capture(t *testing.T, fn func()) (stdout string, stderr string) {
 	return string(outBytes), string(errBytes)
 }
 
-func TestLogger_parseLevelString(t *testing.T) {
+func TestLogger_parseLevel(t *testing.T) {
 	t.Run("valid value", func(t *testing.T) {
 		tests := []struct {
 			name     string
@@ -54,7 +54,7 @@ func TestLogger_parseLevelString(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				got, err := parseLevelString(tt.input)
+				got, err := parseLevel(tt.input)
 
 				require.NoError(t, err, "parseLevelString(%q) should not return an error", tt.input)
 				require.Equal(t, tt.expected, got, "parseLevelString(%q) should return %v", tt.input, tt.expected)
@@ -79,7 +79,7 @@ func TestLogger_parseLevelString(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				_, err := parseLevelString(tt.value)
+				_, err := parseLevel(tt.value)
 
 				require.Error(t, err)
 			})

@@ -43,6 +43,7 @@ func NewConfig() *Config {
 		LogLevel:    defaultLoggingLevel,
 		ListenAddr:  defaultListenAddr,
 		AccrualAddr: defaultAccrualAddr,
+		Environment: defaultEnvironment,
 	}
 }
 
@@ -84,6 +85,7 @@ func (c *Config) LoadEnv(getenv func(string) string) {
 		"SECRET_KEY":             setString(&c.SecretKey),
 		"LOG_LEVEL":              setString(&c.LogLevel),
 		"ACCRUAL_SYSTEM_ADDRESS": setString(&c.AccrualAddr),
+		"ENVIRONMENT":            setString(&c.Environment),
 	}
 
 	for key, parseFn := range envMap {
@@ -99,6 +101,7 @@ func (c *Config) ParseFlags(args []string) error {
 	fs.StringVarP(&c.SecretKey, "secret-key", "s", c.SecretKey, "Secret key")
 	fs.StringVarP(&c.LogLevel, "log-level", "l", c.LogLevel, "Logging level (debug, info, warn, error)")
 	fs.StringVarP(&c.AccrualAddr, "accrual", "r", c.AccrualAddr, "Accrual service address")
+	fs.StringVarP(&c.Environment, "environment", "e", c.Environment, "Environment (dev, prod)")
 
 	return fs.Parse(args)
 }

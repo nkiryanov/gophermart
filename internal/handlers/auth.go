@@ -10,8 +10,6 @@ import (
 	"github.com/nkiryanov/gophermart/internal/models"
 )
 
-const ()
-
 type authService interface {
 	// Register user with username and password
 	// Has to return apperrors.ErrUserAlreadyExists if user already exists
