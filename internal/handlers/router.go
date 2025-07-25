@@ -9,11 +9,20 @@ import (
 
 type middleware func(next http.Handler) http.Handler
 
+// chain applies middlewares in the given order: m1(m2(...(h)))
+func Chain(h http.Handler, mds ...middleware) http.Handler {
+	for i := len(mds) - 1; i >= 0; i-- {
+		h = mds[i](h)
+	}
+	return h
+}
+
 func NewRouter(
 	authHandler *AuthHandler,
 	orderHandler *OrderHandler,
 	balanceHandler *BalanceHandler,
 	authMiddleware middleware,
+	mds ...middleware,
 ) http.Handler {
 	withAuth := func(h http.Handler) http.Handler {
 		return authMiddleware(h)
@@ -41,5 +50,7 @@ func NewRouter(
 	root := http.NewServeMux()
 	root.Handle("/api/user/", http.StripPrefix("/api/user", apiuser))
 
-	return root
+	handler := Chain(root, mds...)
+
+	return handler
 }
