@@ -30,6 +30,7 @@ func RandomPort() (int, error) {
 }
 
 type PostgresContainer struct {
+	DSN       string
 	Pool      *pgxpool.Pool
 	Terminate func()
 }
@@ -73,6 +74,7 @@ func StartPostgresContainer(t *testing.T) PostgresContainer {
 	require.NoError(t, err, "Error happened when connecting to postgres and migrating schema")
 
 	return PostgresContainer{
+		DSN:  dsn,
 		Pool: dbpool,
 		Terminate: func() {
 			dbpool.Close()
