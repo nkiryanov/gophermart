@@ -2,130 +2,146 @@ package logger
 
 import (
 	"encoding/json"
+	"github.com/stretchr/testify/require"
 	"io"
 	"log/slog"
 	"os"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestLogger_parseLevelString(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected slog.Level
-	}{
-		{"Debug level", "DEBUG", slog.LevelDebug},
-		{"Debug level lowercase", "debug", slog.LevelDebug},
-		{"Info level", "INFO", slog.LevelInfo},
-		{"Info level lowercase", "info", slog.LevelInfo},
-		{"Warn level", "WARN", slog.LevelWarn},
-		{"Warn level lowercase", "warn", slog.LevelWarn},
-		{"Error level", "ERROR", slog.LevelError},
-		{"Error level lowercase", "error", slog.LevelError},
-		{"Unknown level", "UNKNOWN", slog.LevelInfo}, // should default to INFO
-		{"Empty string", "", slog.LevelInfo},         // should default to INFO
-	}
+func capture(t *testing.T, fn func()) (stdout string, stderr string) {
+	origOut, origErr := os.Stdout, os.Stderr
+	defer func() { os.Stdout, os.Stderr = origOut, origErr }()
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := parseLevelString(tc.input)
-			assert.Equal(t, tc.expected, got, "parseLevelString(%q) should return %v", tc.input, tc.expected)
-		})
-	}
+	rOut, wOut, err := os.Pipe()
+	require.NoError(t, err, "failed to create stdout pipe")
+	rErr, wErr, err := os.Pipe()
+	require.NoError(t, err, "failed to create stderr pipe")
+
+	os.Stdout, os.Stderr = wOut, wErr
+
+	fn()
+
+	err = wOut.Close()
+	require.NoError(t, err, "failed to close stdout pipe")
+	err = wErr.Close()
+	require.NoError(t, err, "failed to close stderr pipe")
+
+	outBytes, err := io.ReadAll(rOut)
+	require.NoError(t, err, "failed to read stdout pipe")
+	errBytes, err := io.ReadAll(rErr)
+	require.NoError(t, err, "failed to read stderr pipe")
+
+	return string(outBytes), string(errBytes)
 }
 
-func TestLogger_NewLogger(t *testing.T) {
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
+func TestLogger_parseLevelString(t *testing.T) {
+	t.Run("valid value", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			input    string
+			expected slog.Level
+		}{
+			{"Debug level", "DEBUG", slog.LevelDebug},
+			{"Debug level lowercase", "debug", slog.LevelDebug},
+			{"Info level", "INFO", slog.LevelInfo},
+			{"Info level lowercase", "info", slog.LevelInfo},
+			{"Warn level", "WARN", slog.LevelWarn},
+			{"Warn level lowercase", "warn", slog.LevelWarn},
+			{"Error level", "ERROR", slog.LevelError},
+			{"Error level lowercase", "error", slog.LevelError},
+		}
 
-	logger := NewLogger(LevelInfo)
-	logger.Info("test message", "key", "value")
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got, err := parseLevelString(tt.input)
 
-	// Restore stdout and read output
-	err = w.Close()
-	require.NoError(t, err)
-	os.Stdout = oldStdout
+				require.NoError(t, err, "parseLevelString(%q) should not return an error", tt.input)
+				require.Equal(t, tt.expected, got, "parseLevelString(%q) should return %v", tt.input, tt.expected)
+			})
+		}
+	})
 
-	output, err := io.ReadAll(r)
-	require.NoError(t, err)
-	outputStr := string(output)
+	t.Run("not valid", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			value string
+		}{
+			{
+				name:  "empty level",
+				value: "",
+			},
+			{
+				name:  "unknown level",
+				value: "uknown",
+			},
+		}
 
-	// Check that output contains expected elements
-	assert.Contains(t, outputStr, "test message", "Logger output should contain the message")
-	assert.Contains(t, outputStr, "key=value", "Logger output should contain key-value pairs")
-	assert.Contains(t, outputStr, "INFO", "Logger output should contain log level")
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := parseLevelString(tt.value)
+
+				require.Error(t, err)
+			})
+		}
+	})
+}
+
+func TestLogger_NewTextLogger(t *testing.T) {
+	stdout, stderr := capture(t, func() {
+		logger, err := NewTextLogger(LevelInfo)
+		require.NoError(t, err)
+
+		logger.Info("test message", "key", "value")
+	})
+
+	require.Empty(t, stdout, "Text logger should not write to stderr by default")
+	require.NotEmpty(t, stderr, "Text logger should write to stderr")
+
+	require.Contains(t, stderr, "test message")
+	require.Contains(t, stderr, "key=value")
+	require.Contains(t, stderr, "INFO")
+
 }
 
 func TestLogger_NewJSONLogger(t *testing.T) {
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
+	stdout, stderr := capture(t, func() {
+		logger, err := NewJSONLogger(LevelInfo)
+		require.NoError(t, err, "NewJSONLogger should not return an error")
 
-	logger := NewJSONLogger(LevelInfo)
-	logger.Info("test message", "key", "value")
+		logger.Info("test message", "key", "value")
+	})
 
-	// Restore stdout and read output
-	err = w.Close()
-	require.NoError(t, err)
-	os.Stdout = oldStdout
+	require.Empty(t, stdout, "JSON logger should not write to stdout by default")
+	require.NotEmpty(t, stderr, "JSON logger should write to stderr")
 
-	output, err := io.ReadAll(r)
-	require.NoError(t, err)
-
-	// Try to parse as JSON to verify format
-	var logEntry map[string]interface{}
-	err = json.Unmarshal(output, &logEntry)
-	require.NoError(t, err, "JSON logger output should be valid JSON")
-
-	// Check JSON structure
-	assert.Equal(t, "test message", logEntry["msg"], "JSON log should contain the message")
-	assert.Equal(t, "INFO", logEntry["level"], "JSON log should contain the level")
-	assert.Equal(t, "value", logEntry["key"], "JSON log should contain key-value pairs")
+	var entry map[string]any
+	err := json.Unmarshal([]byte(stderr), &entry)
+	require.NoError(t, err, "JSON log should be valid")
+	require.Equal(t, "test message", entry["msg"], "JSON log should contain the message")
+	require.Equal(t, "INFO", entry["level"], "JSON log should contain the level")
+	require.Equal(t, "value", entry["key"], "JSON log should contain key-value pairs")
 }
 
 func TestLogger_NewNoOpLogger(t *testing.T) {
-	// Capture stdout and stderr
-	oldStdout := os.Stdout
-	oldStderr := os.Stderr
+	stdout, stderr := capture(t, func() {
+		logger := NewNoOpLogger()
+		logger.Debug("debug message")
+		logger.Info("info message")
+		logger.Warn("warn message")
+		logger.Error("error message")
+	})
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-	os.Stderr = w
-
-	logger := NewNoOpLogger()
-	logger.Debug("debug message")
-	logger.Info("info message")
-	logger.Warn("warn message")
-	logger.Error("error message")
-
-	// Restore outputs
-	err = w.Close()
-	require.NoError(t, err)
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-
-	output, err := io.ReadAll(r)
-	require.NoError(t, err)
-
-	// NoOp logger should produce no output
-	assert.Empty(t, output, "NoOp logger should produce no output")
+	require.Empty(t, stdout, "NoOp logger should not write to stdout")
+	require.Empty(t, stderr, "NoOp logger should not write to stderr")
 }
 
 func TestLogger_Levels(t *testing.T) {
 	tests := []struct {
-		name        string
-		loggerLevel string
-		logFunction func(Logger)
-		shouldLog   bool
+		name     string
+		level    string
+		logFn    func(Logger)
+		isLogged bool
 	}{
 		{"Debug logger logs debug", LevelDebug, func(l Logger) { l.Debug("test") }, true},
 		{"Debug logger logs info", LevelDebug, func(l Logger) { l.Info("test") }, true},
@@ -148,100 +164,36 @@ func TestLogger_Levels(t *testing.T) {
 		{"Error logger logs error", LevelError, func(l Logger) { l.Error("test") }, true},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Capture stdout
-			oldStdout := os.Stdout
-			r, w, err := os.Pipe()
-			require.NoError(t, err)
-			os.Stdout = w
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr := capture(t, func() {
+				logger, err := NewTextLogger(tt.level)
+				require.NoError(t, err, "NewLogger should not return an error")
 
-			logger := NewLogger(tc.loggerLevel)
-			tc.logFunction(logger)
+				tt.logFn(logger)
+			})
 
-			// Restore stdout and read output
-			err = w.Close()
-			require.NoError(t, err)
-			os.Stdout = oldStdout
-
-			output, err := io.ReadAll(r)
-			require.NoError(t, err)
-			hasOutput := len(output) > 0
-
-			assert.Equal(t, tc.shouldLog, hasOutput, "Logger level %s: expected shouldLog=%v, got hasOutput=%v", tc.loggerLevel, tc.shouldLog, hasOutput)
+			hasStderrLog := len(stderr) > 0
+			require.Empty(t, stdout, "Logger should not write to stdout")
+			require.Equal(t, tt.isLogged, hasStderrLog, "Logger level %s: expected isLogged=%v, got hasStderrLog=%v", tt.level, tt.isLogged, hasStderrLog)
 		})
 	}
 }
 
 func TestLogger_With(t *testing.T) {
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
+	stdout, stderr := capture(t, func() {
+		logger, err := NewTextLogger(LevelInfo)
+		require.NoError(t, err, "NewTextLogger should not return an error")
 
-	logger := NewLogger(LevelInfo)
-	contextLogger := logger.With("component", "test", "version", "1.0")
-	contextLogger.Info("test message")
+		withLogger := logger.With("component", "test", "version", "1.0")
 
-	// Restore stdout and read output
-	err = w.Close()
-	require.NoError(t, err)
-	os.Stdout = oldStdout
-
-	output, err := io.ReadAll(r)
-	require.NoError(t, err)
-	outputStr := string(output)
-
-	// Check that context is included
-	assert.Contains(t, outputStr, "component=test", "Logger.With() should add context to log entries")
-	assert.Contains(t, outputStr, "version=1.0", "Logger.With() should add all context pairs")
-}
-
-func TestLogger_WithGroup(t *testing.T) {
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-
-	logger := NewJSONLogger(LevelInfo) // Use JSON for easier parsing
-	groupedLogger := logger.WithGroup("database")
-	groupedLogger.Info("connection established", "host", "localhost")
-
-	// Restore stdout and read output
-	err = w.Close()
-	require.NoError(t, err)
-	os.Stdout = oldStdout
-
-	output, err := io.ReadAll(r)
-	require.NoError(t, err)
-
-	// Parse JSON to check structure
-	var logEntry map[string]interface{}
-	err = json.Unmarshal(output, &logEntry)
-	require.NoError(t, err, "Failed to parse JSON log")
-
-	// Check that group is created
-	database, ok := logEntry["database"].(map[string]interface{})
-	require.True(t, ok, "WithGroup should create a group in the log output")
-	assert.Equal(t, "localhost", database["host"], "WithGroup should group attributes under the specified name")
-}
-
-func TestLoggerChaining(t *testing.T) {
-	// Test that With and WithGroup can be chained
-	logger := NewNoOpLogger()
-
-	chainedLogger := logger.
-		With("service", "auth").
-		WithGroup("request").
-		With("id", "123")
-
-	assert.NotNil(t, chainedLogger)
-	assert.Implements(t, (*Logger)(nil), chainedLogger)
-
-	// Should not panic when logging
-	assert.NotPanics(t, func() {
-		chainedLogger.Info("chained logger test")
+		withLogger.Info("test message")
 	})
+
+	require.Empty(t, stdout, "Logger.With() should not write to stdout")
+	require.NotEmpty(t, stderr, "Logger.With() should write to stderr")
+
+	require.Contains(t, stderr, "component=test")
+	require.Contains(t, stderr, "version=1.0")
+	require.Contains(t, stderr, "test message")
 }

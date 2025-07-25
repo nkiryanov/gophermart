@@ -23,6 +23,8 @@ type ServerApp struct {
 }
 
 func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
+	// Initialize logger
+
 	// Connect to the database and run migrations
 	pool, err := db.ConnectAndMigrate(ctx, c.DatabaseDSN)
 	if err != nil {

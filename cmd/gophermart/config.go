@@ -6,12 +6,15 @@ import (
 	"github.com/spf13/pflag"
 	"os"
 	"path/filepath"
+
+	"github.com/nkiryanov/gophermart/internal/logger"
 )
 
 const (
 	defaultListenAddr   = "localhost:8000"
-	defaultLoggingLevel = "info"
+	defaultLoggingLevel = logger.LevelInfo
 	defaultAccrualAddr  = "localhost:3000"
+	defaultEnvironment  = logger.EnvProduction
 )
 
 type Config struct {
@@ -30,6 +33,9 @@ type Config struct {
 	// Secret key
 	// Some internal parts (like signing JWT tokens) uses symmetric encryption, so this key is used for that purpose
 	SecretKey string
+
+	// Environment
+	Environment string
 }
 
 func NewConfig() *Config {

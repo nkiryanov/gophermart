@@ -3,20 +3,22 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/nkiryanov/gophermart/internal/logger"
 )
 
 func main() {
 	ctx := context.Background()
+	log := logger.NewDefault()
 
 	err := run(ctx, os.Getenv, os.Getwd, os.Args[1:])
 	if err != nil {
-		slog.Error("Application error", "error", err.Error())
+		log.Error("Application error", "error", err)
 		os.Exit(1)
 	}
 }
