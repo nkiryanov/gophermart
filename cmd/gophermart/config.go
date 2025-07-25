@@ -1,7 +1,11 @@
 package main
 
 import (
+	"errors"
+	"github.com/joho/godotenv"
 	"github.com/spf13/pflag"
+	"os"
+	"path/filepath"
 )
 
 const (
@@ -33,6 +37,28 @@ func NewConfig() *Config {
 		LogLevel:    defaultLoggingLevel,
 		ListenAddr:  defaultListenAddr,
 		AccrualAddr: defaultAccrualAddr,
+	}
+}
+
+// Load variable from '.env' file (should be located at working directory)
+func (c *Config) LoadDotEnv(getwd func() (string, error)) error {
+	wd, err := getwd()
+	if err != nil {
+		return err
+	}
+
+	envMap, err := godotenv.Read(filepath.Join(wd, ".env"))
+
+	switch {
+	case err == nil:
+		c.LoadEnv(func(key string) string {
+			return envMap[key]
+		})
+		return nil
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	default:
+		return err
 	}
 }
 
