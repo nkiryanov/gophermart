@@ -11,14 +11,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nkiryanov/gophermart/internal/handlers"
+	"github.com/nkiryanov/gophermart/internal/handlers/userctx"
 	"github.com/nkiryanov/gophermart/internal/models"
 )
 
 // Allow to use a function as auth service
 type authFunc func(ctx context.Context, r *http.Request) (models.User, error)
 
-func (f authFunc) Auth(ctx context.Context, r *http.Request) (models.User, error) {
+func (f authFunc) GetUserFromRequest(ctx context.Context, r *http.Request) (models.User, error) {
 	return f(ctx, r)
 }
 
@@ -27,7 +27,7 @@ func TestAuthMiddleware_Auth(t *testing.T) {
 	// If ok write it username to response
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Must always be true cause middleware has to set user to response or write error to response
-		user, ok := handlers.UserFromContext(r.Context())
+		user, ok := userctx.FromContext(r.Context())
 		require.True(t, ok)
 
 		w.WriteHeader(http.StatusOK)

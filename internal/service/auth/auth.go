@@ -181,8 +181,8 @@ func (s *AuthService) GetRefreshString(r *http.Request) (string, error) {
 	return cookie.Value, nil
 }
 
-// Authenticate user using access token from request
-func (s *AuthService) Auth(ctx context.Context, r *http.Request) (models.User, error) {
+// Authenticate and get user from request or return error
+func (s *AuthService) GetUserFromRequest(ctx context.Context, r *http.Request) (models.User, error) {
 	var u models.User
 	var scheme = fmt.Sprintf("%s ", s.accessAuthScheme)
 

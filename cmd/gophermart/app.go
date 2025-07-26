@@ -9,7 +9,6 @@ import (
 
 	"github.com/nkiryanov/gophermart/internal/db"
 	"github.com/nkiryanov/gophermart/internal/handlers"
-	"github.com/nkiryanov/gophermart/internal/handlers/middleware"
 	"github.com/nkiryanov/gophermart/internal/logger"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth"
@@ -51,18 +50,11 @@ func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 		return nil, fmt.Errorf("error while creating auth service. Err: %w", err)
 	}
 
-	// Initialize auth handler
-	authHandler := handlers.NewAuth(authService)
-	orderHandler := handlers.NewOrder(orderService)
-	balanceHandler := handlers.NewBalance(userService)
-	authMiddleware := middleware.AuthMiddleware(authService)
-
 	mux := handlers.NewRouter(
-		authHandler,
-		orderHandler,
-		balanceHandler,
-		authMiddleware,
-		middleware.LoggerMiddleware(logger),
+		authService,
+		orderService,
+		userService,
+		logger,
 	)
 
 	return &ServerApp{

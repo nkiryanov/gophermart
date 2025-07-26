@@ -1,4 +1,4 @@
-package handlers
+package userctx
 
 import (
 	"context"
@@ -10,11 +10,13 @@ type ctxKey string
 
 const userKey ctxKey = "user"
 
-func NewContextWithUser(ctx context.Context, u models.User) context.Context {
+// Create a new context with the user
+func New(ctx context.Context, u models.User) context.Context {
 	return context.WithValue(ctx, userKey, u)
 }
 
-func UserFromContext(ctx context.Context) (models.User, bool) {
+// Extract the user from the context
+func FromContext(ctx context.Context) (models.User, bool) {
 	u, ok := ctx.Value(userKey).(models.User)
 	return u, ok
 }
