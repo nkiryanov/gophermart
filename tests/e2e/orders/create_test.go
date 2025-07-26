@@ -37,7 +37,7 @@ func Test_OrdersCreate(t *testing.T) {
 			UploadedAt time.Time `json:"uploaded_at"`
 		}
 
-		authReq := func(user string, pwd string, orderNum string, t *testing.T) *http.Request {
+		createOrderReq := func(user string, pwd string, orderNum string, t *testing.T) *http.Request {
 			req, err := http.NewRequest(http.MethodPost, srvURL+OrderCreateURL, strings.NewReader(orderNum))
 			require.NoError(t, err, "failed to create request")
 
@@ -50,7 +50,7 @@ func Test_OrdersCreate(t *testing.T) {
 
 		t.Run("create order ok", func(t *testing.T) {
 			testutil.InTx(tx, t, func(_ pgx.Tx) {
-				req := authReq("test-user", "pwd", "123", t)
+				req := createOrderReq("test-user", "pwd", "17893729974", t)
 				resp, err := http.DefaultClient.Do(req)
 				require.NoError(t, err, "failed to send request")
 				defer resp.Body.Close() // nolint:errcheck
@@ -63,19 +63,33 @@ func Test_OrdersCreate(t *testing.T) {
 				err = json.Unmarshal(body, &response)
 				require.NoError(t, err, "failed to unmarshal response body")
 
-				assert.Equal(t, "123", response.Number, "order number should match")
+				assert.Equal(t, "17893729974", response.Number, "order number should match")
 				assert.Equal(t, "NEW", response.Status, "order status should be 'new'")
 				assert.WithinDuration(t, time.Now(), response.UploadedAt, time.Second, "uploaded_at should be close to now")
 
 			})
 		})
 
+		t.Run("fail if number invalid", func(t *testing.T) {
+			testutil.InTx(tx, t, func(_ pgx.Tx) {
+				req := createOrderReq("test-user", "pwd", "178", t)
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err, "failed to send request")
+				defer resp.Body.Close() // nolint:errcheck
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err, "failed to read response body")
+
+				require.Equalf(t, http.StatusUnprocessableEntity, resp.StatusCode, "not expected status code. Body: %s", string(body))
+			})
+
+		})
+
 		t.Run("create twice ok", func(t *testing.T) {
 			testutil.InTx(tx, t, func(_ pgx.Tx) {
-				order, err := s.OrderService.CreateOrder(t.Context(), "123", &user, models.WithOrderStatus(models.OrderProcessed))
+				order, err := s.OrderService.CreateOrder(t.Context(), "17893729974", &user, models.WithOrderStatus(models.OrderProcessed))
 				require.NoError(t, err, "order has to be created ok")
 
-				req := authReq("test-user", "pwd", "123", t)
+				req := createOrderReq("test-user", "pwd", "17893729974", t)
 				resp, err := http.DefaultClient.Do(req)
 				require.NoError(t, err, "failed to send request")
 				defer resp.Body.Close() // nolint:errcheck
@@ -87,7 +101,7 @@ func Test_OrdersCreate(t *testing.T) {
 				err = json.Unmarshal(body, &response)
 				require.NoError(t, err, "failed to unmarshal response body")
 
-				assert.Equal(t, "123", response.Number)
+				assert.Equal(t, "17893729974", response.Number)
 				assert.Equal(t, "PROCESSED", response.Status, "order status should be 'processed'")
 				assert.Equal(t, order.UploadedAt.UTC(), response.UploadedAt.UTC(), "uploaded_at should be the same for the same order")
 			})
@@ -96,14 +110,14 @@ func Test_OrdersCreate(t *testing.T) {
 		t.Run("create on conflict", func(t *testing.T) {
 			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				// User order
-				_, err := s.OrderService.CreateOrder(t.Context(), "123", &user)
+				_, err := s.OrderService.CreateOrder(t.Context(), "17893729974", &user)
 				require.NoError(t, err, "order has to be created ok")
 
 				// ya user
 				_, err = s.UserService.CreateUser(t.Context(), "yet-another-user", "pwd")
 				require.NoError(t, err)
 
-				req := authReq("yet-another-user", "pwd", "123", t)
+				req := createOrderReq("yet-another-user", "pwd", "17893729974", t)
 				resp, err := http.DefaultClient.Do(req)
 				require.NoError(t, err, "failed to send request")
 				defer resp.Body.Close() // nolint:errcheck

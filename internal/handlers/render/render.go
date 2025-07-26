@@ -19,16 +19,16 @@ const (
 var validate = validator.New()
 
 func init() {
-	// Return on 'TagName' json tag instead of struct name
-	// Look at documentation of 'RegisterTagNameFunc' for more details
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+	useJSONTagNames := func(fld reflect.StructField) string {
 		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
 		// skip if tag key says it should be ignored
 		if name == "-" {
 			return ""
 		}
 		return name
-	})
+	}
+
+	validate.RegisterTagNameFunc(useJSONTagNames)
 }
 
 type Struct any
@@ -43,7 +43,47 @@ func JSON(w http.ResponseWriter, data any) {
 	JSONWithStatus(w, data, http.StatusOK)
 }
 
-// Render ServiceError
+// renderJSONWithStatus sends data as json and enforces status code
+func JSONWithStatus(w http.ResponseWriter, data any, code int) {
+	buf := &bytes.Buffer{}
+	enc := json.NewEncoder(buf)
+
+	if err := enc.Encode(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	_, _ = w.Write(buf.Bytes())
+}
+
+// BindAndValidate decodes JSON request body into type T and validates it using struct tags.
+// Returns the decoded value and writes appropriate error responses for decoding or validation failures.
+func BindAndValidate[T Struct](w http.ResponseWriter, r *http.Request) (T, error) {
+	var value T
+
+	err := json.NewDecoder(r.Body).Decode(&value)
+	if err != nil {
+		decodeError(w, err)
+		return value, err
+	}
+
+	return value, ValidateStruct(w, value)
+}
+
+// Take struct and run validator for it
+// If validation fails, it writes validation errors to response
+func ValidateStruct(w http.ResponseWriter, v any) error {
+	err := validate.Struct(v)
+	if err != nil {
+		validationErrors(w, err.(validator.ValidationErrors))
+		return err
+	}
+	return nil
+}
+
+// Render error message as service error
 func ServiceError(w http.ResponseWriter, error string, code int) {
 	response := ErrorResponse{
 		Error:   ServiceErrorType,
@@ -54,7 +94,7 @@ func ServiceError(w http.ResponseWriter, error string, code int) {
 }
 
 // Render json DecodeError
-func DecodeError(w http.ResponseWriter, err error) {
+func decodeError(w http.ResponseWriter, err error) {
 	response := ErrorResponse{
 		Error:   DecodingErrorType,
 		Message: "",
@@ -72,7 +112,7 @@ func DecodeError(w http.ResponseWriter, err error) {
 }
 
 // Render ValidationErrors
-func ValidationErrors(w http.ResponseWriter, errs validator.ValidationErrors) {
+func validationErrors(w http.ResponseWriter, errs validator.ValidationErrors) {
 	response := ErrorResponse{
 		Error:   ValidationErrorType,
 		Message: "Request validation failed",
@@ -87,6 +127,8 @@ func ValidationErrors(w http.ResponseWriter, errs validator.ValidationErrors) {
 			message = "This field is required"
 		case "min":
 			message = fmt.Sprintf("Value is too short (minimum %s)", fieldError.Param())
+		case "luhn":
+			message = "Invalid value according to Luhn algorithm"
 		default:
 			message = "Invalid value"
 		}
@@ -94,42 +136,5 @@ func ValidationErrors(w http.ResponseWriter, errs validator.ValidationErrors) {
 		response.Fields[fieldError.Field()] = message
 	}
 
-	JSONWithStatus(w, response, http.StatusBadRequest)
-}
-
-// BindAndValidate decodes JSON request body into type T and validates it using struct tags.
-// Returns the decoded value and writes appropriate error responses for decoding or validation failures.
-func BindAndValidate[T Struct](w http.ResponseWriter, r *http.Request) (T, error) {
-	var value T
-
-	err := json.NewDecoder(r.Body).Decode(&value)
-	if err != nil {
-		DecodeError(w, err)
-		return value, err
-	}
-
-	err = validate.Struct(value)
-	if err != nil {
-		// pretty sure cast will be ok cause expecting T is valid struct
-		errs := err.(validator.ValidationErrors)
-		ValidationErrors(w, errs)
-		return value, err
-	}
-
-	return value, nil
-}
-
-// renderJSONWithStatus sends data as json and enforces status code
-func JSONWithStatus(w http.ResponseWriter, data any, code int) {
-	buf := &bytes.Buffer{}
-	enc := json.NewEncoder(buf)
-
-	if err := enc.Encode(data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(code)
-	_, _ = w.Write(buf.Bytes())
+	JSONWithStatus(w, response, http.StatusUnprocessableEntity)
 }

@@ -40,6 +40,7 @@ func handleCreateOrder(orderService orderService, l logger.Logger) http.Handler 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := userctx.FromContext(r.Context())
 		if !ok {
+			l.Error("Failed to get user from context", "uri", r.RequestURI)
 			render.ServiceError(w, "Internal service error", http.StatusInternalServerError)
 			return
 		}
@@ -56,6 +57,8 @@ func handleCreateOrder(orderService orderService, l logger.Logger) http.Handler 
 		switch {
 		case err == nil:
 			render.JSONWithStatus(w, orderToResponse(&order), http.StatusAccepted)
+		case errors.Is(err, apperrors.ErrOrderNumberInvalid):
+			render.ServiceError(w, "Invalid order number", http.StatusUnprocessableEntity)
 		case errors.Is(err, apperrors.ErrOrderAlreadyExists):
 			render.JSONWithStatus(w, orderToResponse(&order), http.StatusOK)
 		case errors.Is(err, apperrors.ErrOrderNumberTaken):
@@ -71,6 +74,7 @@ func handleListOrder(orderService orderService, l logger.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := userctx.FromContext(r.Context())
 		if !ok {
+			l.Error("Failed to get user from context", "uri", r.RequestURI)
 			render.ServiceError(w, "Internal service error", http.StatusInternalServerError)
 			return
 		}
