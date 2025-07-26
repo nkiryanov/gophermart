@@ -44,7 +44,7 @@ func TestOrders(t *testing.T) {
 					require.Equal(t, user.ID, order.UserID)
 					require.WithinDuration(t, time.Now(), order.UploadedAt, time.Second)
 					require.WithinDuration(t, time.Now(), order.ModifiedAt, time.Second)
-					require.Equal(t, models.OrderNew, order.Status)
+					require.Equal(t, models.OrderStatusNew, order.Status)
 					require.True(t, order.Accrual.IsZero(), "accrual should be zero for new orders")
 				})
 			})
@@ -55,7 +55,7 @@ func TestOrders(t *testing.T) {
 					require.NoError(t, err, "order has to be created ok")
 
 					// Crete order second time but with different status
-					_, err = storage.Order().CreateOrder(t.Context(), "123", user.ID, models.WithOrderStatus(models.OrderProcessed))
+					_, err = storage.Order().CreateOrder(t.Context(), "123", user.ID, models.WithOrderStatus(models.OrderStatusProcessed))
 
 					require.Error(t, err, "crating same order must failed")
 					require.ErrorIs(t, err, apperrors.ErrOrderAlreadyExists, "should return well known error")
@@ -70,7 +70,7 @@ func TestOrders(t *testing.T) {
 					require.NoError(t, err)
 
 					// Crete order second time but with different status
-					_, err = storage.Order().CreateOrder(t.Context(), "123", yaUser.ID, models.WithOrderStatus(models.OrderProcessed))
+					_, err = storage.Order().CreateOrder(t.Context(), "123", yaUser.ID, models.WithOrderStatus(models.OrderStatusProcessed))
 
 					require.Error(t, err, "crating same order must failed")
 					require.ErrorIs(t, err, apperrors.ErrOrderNumberTaken, "should return well known error")
@@ -117,7 +117,7 @@ func TestOrders(t *testing.T) {
 					order, err := storage.Order().CreateOrder(t.Context(), "111", user.ID)
 					require.NoError(t, err)
 					yaOrder, err := storage.Order().CreateOrder(t.Context(), "222", user.ID,
-						models.WithOrderStatus(models.OrderProcessed),
+						models.WithOrderStatus(models.OrderStatusProcessed),
 						models.WithOrderAccrual(decimal.RequireFromString("100.50")),
 					)
 					require.NoError(t, err)

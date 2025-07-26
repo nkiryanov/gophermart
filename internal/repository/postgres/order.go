@@ -42,7 +42,7 @@ func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.
 		ModifiedAt: now,
 		Number:     number,
 		UserID:     userID,
-		Status:     models.OrderNew,
+		Status:     models.OrderStatusNew,
 	}
 
 	for _, option := range opts {

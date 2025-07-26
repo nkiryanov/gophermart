@@ -86,7 +86,7 @@ func Test_OrdersCreate(t *testing.T) {
 
 		t.Run("create twice ok", func(t *testing.T) {
 			testutil.InTx(tx, t, func(_ pgx.Tx) {
-				order, err := s.OrderService.CreateOrder(t.Context(), "17893729974", &user, models.WithOrderStatus(models.OrderProcessed))
+				order, err := s.OrderService.CreateOrder(t.Context(), "17893729974", &user, models.WithOrderStatus(models.OrderStatusProcessed))
 				require.NoError(t, err, "order has to be created ok")
 
 				req := createOrderReq("test-user", "pwd", "17893729974", t)

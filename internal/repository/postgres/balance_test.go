@@ -162,7 +162,7 @@ func TestTransactions(t *testing.T) {
 						ProcessedAt: time.Now(),
 						UserID:      uuid.New(), // Non-existent user
 						OrderNumber: "12345",
-						Type:        models.TransactionAccrual,
+						Type:        models.TransactionTypeAccrual,
 						Amount:      decimal.NewFromInt(100),
 					}
 
@@ -180,7 +180,7 @@ func TestTransactions(t *testing.T) {
 						ProcessedAt: time.Now(),
 						UserID:      user.ID,
 						OrderNumber: "12345",
-						Type:        models.TransactionAccrual,
+						Type:        models.TransactionTypeAccrual,
 						Amount:      decimal.NewFromInt(100),
 					}
 
@@ -202,7 +202,7 @@ func TestTransactions(t *testing.T) {
 						ProcessedAt: time.Now(),
 						UserID:      user.ID,
 						OrderNumber: "67890",
-						Type:        models.TransactionWithdrawn,
+						Type:        models.TransactionTypeWithdrawn,
 						Amount:      decimal.NewFromInt(50),
 					}
 

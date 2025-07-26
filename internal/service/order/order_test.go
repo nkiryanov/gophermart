@@ -45,7 +45,7 @@ func TestOrder(t *testing.T) {
 				require.NotEmpty(t, order.ID, "order ID should not be empty")
 				require.Equal(t, "17893729974", order.Number, "order number should match provided number")
 				require.Equal(t, user.ID, order.UserID, "order user ID should match created user")
-				require.Equal(t, models.OrderNew, order.Status, "order status new by default")
+				require.Equal(t, models.OrderStatusNew, order.Status, "order status new by default")
 				require.NotZero(t, order.UploadedAt, "order uploaded at should be set")
 				require.NotZero(t, order.ModifiedAt, "order modified at should be set")
 				require.True(t, order.Accrual.IsZero(), "order accrual should be zero by default")

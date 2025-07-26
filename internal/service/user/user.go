@@ -3,11 +3,13 @@ package user
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/repository"
+	"github.com/shopspring/decimal"
 )
 
 var (
@@ -92,4 +94,48 @@ func (s *UserService) GetUserByID(ctx context.Context, userID uuid.UUID) (models
 
 func (s *UserService) GetBalance(ctx context.Context, userID uuid.UUID) (models.Balance, error) {
 	return s.storage.Balance().GetBalance(ctx, userID, false)
+}
+
+func (s *UserService) GetWithdrawals(ctx context.Context, userID uuid.UUID) ([]models.Transaction, error) {
+	return s.storage.Balance().ListTransactions(ctx, userID, true)
+}
+
+// Withdraw from user balance in transaction
+func (s *UserService) Withdraw(ctx context.Context, userID uuid.UUID, orderNum string, amount decimal.Decimal) (models.Balance, error) {
+	var balance models.Balance
+
+	err := s.storage.InTx(ctx, func(storage repository.Storage) error {
+		existedBalance, err := s.storage.Balance().GetBalance(ctx, userID, true)
+		if err != nil {
+			return err
+		}
+
+		if existedBalance.Current.LessThan(amount) {
+			return apperrors.ErrBalanceInsufficient
+		}
+
+		t, err := s.storage.Balance().CreateTransaction(ctx, models.Transaction{
+			ID:          uuid.New(),
+			ProcessedAt: time.Now(),
+			UserID:      userID,
+			OrderNumber: orderNum,
+			Type:        models.TransactionTypeWithdrawn,
+			Amount:      amount,
+		})
+		if err != nil {
+			return err
+		}
+
+		balance, err = s.storage.Balance().UpdateBalance(ctx, userID, t.Amount.Neg())
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return balance, fmt.Errorf("can't withdraw. Err: %w", err)
+	}
+
+	return balance, nil
 }

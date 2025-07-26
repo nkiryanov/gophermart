@@ -63,13 +63,13 @@ func Test_OrdersList(t *testing.T) {
 		t.Run("list all orders", func(t *testing.T) {
 			testutil.InTx(tx, t, func(_ pgx.Tx) {
 				_, err := s.OrderService.CreateOrder(t.Context(), "4111111111111111", &user,
-					models.WithOrderStatus(models.OrderNew),
+					models.WithOrderStatus(models.OrderStatusNew),
 					models.WithUploadedAt(time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)),
 				)
 				require.NoError(t, err, "first order has to be created ok")
 
 				_, err = s.OrderService.CreateOrder(t.Context(), "4242424242424242", &user,
-					models.WithOrderStatus(models.OrderProcessed),
+					models.WithOrderStatus(models.OrderStatusProcessed),
 					models.WithOrderAccrual(decimal.RequireFromString("100.50")),
 					models.WithUploadedAt(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)),
 				)
