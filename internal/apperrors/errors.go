@@ -15,4 +15,6 @@ var (
 	ErrOrderNumberTaken   = errors.New("order number already exists for different user")
 	ErrOrderAlreadyExists = errors.New("order already exists for this user")
 	ErrOrderNumberInvalid = errors.New("order number is invalid")
+
+	ErrBalanceInsufficient = errors.New("insufficient balance")
 )

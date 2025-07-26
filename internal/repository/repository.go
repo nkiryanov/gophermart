@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/shopspring/decimal"
 )
 
 // User repository interface
@@ -42,7 +43,8 @@ type OrderRepo interface {
 
 type BalanceRepo interface {
 	CreateBalance(ctx context.Context, userID uuid.UUID) error
-	GetBalance(ctx context.Context, userID uuid.UUID) (models.Balance, error)
+	GetBalance(ctx context.Context, userID uuid.UUID, lock bool) (models.Balance, error)
+	UpdateBalance(ctx context.Context, userID uuid.UUID, delta decimal.Decimal) (models.Balance, error)
 }
 
 type Storage interface {

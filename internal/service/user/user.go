@@ -91,5 +91,5 @@ func (s *UserService) GetUserByID(ctx context.Context, userID uuid.UUID) (models
 }
 
 func (s *UserService) GetBalance(ctx context.Context, userID uuid.UUID) (models.Balance, error) {
-	return s.storage.Balance().GetBalance(ctx, userID)
+	return s.storage.Balance().GetBalance(ctx, userID, false)
 }

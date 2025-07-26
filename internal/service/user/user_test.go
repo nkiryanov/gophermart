@@ -39,7 +39,7 @@ func TestUser(t *testing.T) {
 				require.NotEqual(t, "password123", user.HashedPassword, "password should be hashed")
 				require.NotZero(t, user.CreatedAt, "created at should be set")
 
-				balance, err := s.storage.Balance().GetBalance(t.Context(), user.ID)
+				balance, err := s.storage.Balance().GetBalance(t.Context(), user.ID, false)
 
 				require.NoError(t, err, "balance creation should not fail")
 				require.Equal(t, user.ID, balance.UserID, "balance user ID should match created")

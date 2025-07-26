@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
@@ -60,7 +61,7 @@ func TestBalance(t *testing.T) {
 					err := storage.Balance().CreateBalance(t.Context(), user.ID)
 					require.NoError(t, err)
 
-					balance, err := storage.Balance().GetBalance(t.Context(), user.ID)
+					balance, err := storage.Balance().GetBalance(t.Context(), user.ID, false)
 
 					require.NoError(t, err, "getting balance should not fail")
 					require.NotZero(t, balance.ID)
@@ -72,12 +73,71 @@ func TestBalance(t *testing.T) {
 
 			t.Run("get nonexistent balance", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
-					_, err := storage.Balance().GetBalance(t.Context(), uuid.New())
+					_, err := storage.Balance().GetBalance(t.Context(), uuid.New(), false)
 
 					require.Error(t, err, "getting nonexistent balance should fail")
 					require.ErrorIs(t, err, apperrors.ErrUserNotFound, "should return well known error")
 				})
 			})
+		})
+	})
+
+	t.Run("UpdateBalance", func(t *testing.T) {
+		inTx(t, pg.Pool, func(tx pgx.Tx, storage repository.Storage) {
+			user, err := storage.User().CreateUser(t.Context(), "test-user", "hash")
+			require.NoError(t, err)
+			err = storage.Balance().CreateBalance(t.Context(), user.ID)
+			require.NoError(t, err)
+
+			t.Run("accrual", func(t *testing.T) {
+				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
+					balance, err := storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(100))
+					require.NoError(t, err, "updating balance should not fail")
+
+					require.Equal(t, user.ID, balance.UserID, "user ID should match")
+					require.Equal(t, decimal.NewFromInt(100), balance.Current)
+					require.True(t, balance.Withdrawn.IsZero(), "withdrawn balance should be zero after accrual")
+
+					storedBalance, err := storage.Balance().GetBalance(t.Context(), user.ID, false)
+					require.NoError(t, err, "getting balance after accrual should not fail")
+					require.Equal(t, balance.Current, storedBalance.Current, "current balance should match after accrual")
+					require.Equal(t, balance.Withdrawn, storedBalance.Withdrawn, "withdrawn balance should match after accrual")
+				})
+			})
+
+			t.Run("withdrawn", func(t *testing.T) {
+				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
+					_, err := storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(100))
+					require.NoError(t, err, "updating balance should not fail")
+
+					balance, err := storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(-50))
+					require.NoError(t, err, "withdrawing balance should not fail")
+
+					require.Equal(t, user.ID, balance.UserID, "user ID should match")
+					require.Equal(t, decimal.NewFromInt(50), balance.Current, "current balance should reflect withdrawal")
+					require.Equal(t, decimal.NewFromInt(50), balance.Withdrawn, "withdrawn balance should reflect withdrawal")
+
+					storedBalance, err := storage.Balance().GetBalance(t.Context(), user.ID, false)
+					require.NoError(t, err, "getting balance after withdrawal should not fail")
+					require.Equal(t, balance.Current, storedBalance.Current, "current balance should match after withdrawal")
+					require.Equal(t, balance.Withdrawn, storedBalance.Withdrawn, "withdrawn balance should match after withdrawal")
+				})
+			})
+
+			t.Run("withdrawn insufficient funds", func(t *testing.T) {
+				_, err := storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(100))
+				require.NoError(t, err, "updating balance should not fail")
+
+				_, err = storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(-201))
+				require.Error(t, err, "withdrawing more than available balance should fail")
+				require.ErrorIs(t, err, apperrors.ErrBalanceInsufficient, "should return insufficient funds error")
+
+				storedBalance, err := storage.Balance().GetBalance(t.Context(), user.ID, false)
+				require.NoError(t, err, "getting balance after failed withdrawal should not fail")
+				require.Equal(t, decimal.NewFromInt(100), storedBalance.Current, "current balance must not change after failed withdrawal")
+				require.True(t, storedBalance.Withdrawn.IsZero(), "withdrawn balance must not change after failed withdrawal")
+			})
+
 		})
 	})
 }
