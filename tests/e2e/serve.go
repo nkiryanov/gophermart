@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nkiryanov/gophermart/internal/handlers"
-	"github.com/nkiryanov/gophermart/internal/handlers/middleware"
+	"github.com/nkiryanov/gophermart/internal/logger"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
@@ -38,22 +38,15 @@ func ServeInTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL str
 
 		orderService := order.NewService(storage)
 		userService := user.NewService(user.DefaultHasher, storage)
-
 		authService, err := auth.NewService(auth.Config{}, tokenManager, userService)
 		require.NoError(t, err, "auth service starting error", err)
 
-		// Initializer handlers
-		authHandler := handlers.NewAuth(authService)
-		authMiddleware := middleware.AuthMiddleware(authService)
-		orderHandler := handlers.NewOrder(orderService)
-		balanceHandler := handlers.NewBalance(userService)
-
 		// Complete all together as router
 		router := handlers.NewRouter(
-			authHandler,
-			orderHandler,
-			balanceHandler,
-			authMiddleware,
+			authService,
+			orderService,
+			userService,
+			logger.NewNoOpLogger(),
 		)
 
 		// Run http server with the router in transaction

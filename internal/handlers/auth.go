@@ -1,138 +1,107 @@
 package handlers
 
 import (
-	"context"
 	"errors"
 	"net/http"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/handlers/render"
-	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/logger"
 )
 
-type authService interface {
-	// Register user with username and password
-	// Has to return apperrors.ErrUserAlreadyExists if user already exists
-	Register(ctx context.Context, username string, password string) (models.TokenPair, error)
-
-	// Login user with username and password
-	// Has to return apperrors.ErrUserNotFound if user not found
-	Login(ctx context.Context, username string, password string) (models.TokenPair, error)
-
-	// Refresh tokens using refresh token
-	// If token expired: has to return apperrors.ErrRefreshTokenExpired
-	// If token not found: has to return apperrors.ErrRefreshTokenNotFound
-	RefreshPair(ctx context.Context, refresh string) (models.TokenPair, error)
-
-	// Set auth tokens (access, refresh) to response
-	SetTokenPairToResponse(w http.ResponseWriter, pair models.TokenPair)
-
-	// Get refresh token from request
-	GetRefreshString(r *http.Request) (string, error)
-}
-
-type AuthHandler struct {
-	authService authService
-}
-
-func NewAuth(authService authService) *AuthHandler {
-	return &AuthHandler{authService: authService}
-}
-
-func (h *AuthHandler) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /register", h.register)
-	mux.HandleFunc("POST /login", h.login)
-	mux.HandleFunc("POST /refresh", h.refresh)
-
-	return mux
-}
-
 // Register user with username and password
-func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
-	type RegisterRequest struct {
+func handleRegister(as authService, l logger.Logger) http.Handler {
+	type request struct {
 		Login    string `json:"login" validate:"required,min=2,max=50"`
 		Password string `json:"password" validate:"required,min=8"`
 	}
-	type RegisterSuccessResponse struct {
+	type response struct {
 		Message string `json:"message"`
 	}
 
-	data, err := render.BindAndValidate[RegisterRequest](w, r)
-	if err != nil {
-		// Consider to log errors here
-		return
-	}
-
-	pair, err := h.authService.Register(r.Context(), data.Login, data.Password)
-	if err != nil {
-		switch {
-		case errors.Is(err, apperrors.ErrUserAlreadyExists):
-			render.ServiceError(w, "User already exists", http.StatusConflict)
-		default:
-			render.ServiceError(w, "Internal server error", http.StatusInternalServerError)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, err := render.BindAndValidate[request](w, r)
+		if err != nil {
+			return
 		}
-		return
-	}
 
-	h.authService.SetTokenPairToResponse(w, pair)
-	render.JSON(w, RegisterSuccessResponse{Message: "User registered successfully"})
+		pair, err := as.Register(r.Context(), data.Login, data.Password)
+		if err != nil {
+			switch {
+			case errors.Is(err, apperrors.ErrUserAlreadyExists):
+				render.ServiceError(w, "User already exists", http.StatusConflict)
+			default:
+				l.Error("Failed to register user", "error", err)
+				render.ServiceError(w, "Internal server error", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		as.SetTokenPairToResponse(w, pair)
+		render.JSON(w, response{Message: "User registered successfully"})
+	})
 }
 
 // Login user with username and password
-func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
-	type LoginRequest struct {
+func handleLogin(as authService, l logger.Logger) http.Handler {
+	type request struct {
 		Login    string `json:"login" validate:"required"`
 		Password string `json:"password" validate:"required"`
 	}
-	type LoginSuccessResponse struct {
+	type response struct {
 		Message string `json:"message"`
 	}
 
-	data, err := render.BindAndValidate[LoginRequest](w, r)
-	if err != nil {
-		// Consider to log errors here
-		return
-	}
-
-	pair, err := h.authService.Login(r.Context(), data.Login, data.Password)
-	if err != nil {
-		switch {
-		case errors.Is(err, apperrors.ErrUserNotFound):
-			render.ServiceError(w, "User not found", http.StatusUnauthorized)
-		default:
-			render.ServiceError(w, "Internal server error", http.StatusInternalServerError)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, err := render.BindAndValidate[request](w, r)
+		if err != nil {
+			// Consider to log errors here
+			return
 		}
-		return
-	}
 
-	h.authService.SetTokenPairToResponse(w, pair)
-	render.JSON(w, LoginSuccessResponse{Message: "User logged in successfully"})
+		pair, err := as.Login(r.Context(), data.Login, data.Password)
+		if err != nil {
+			switch {
+			case errors.Is(err, apperrors.ErrUserNotFound):
+				render.ServiceError(w, "User not found", http.StatusUnauthorized)
+			default:
+				l.Error("Failed to login user", "error", err)
+				render.ServiceError(w, "Internal server error", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		as.SetTokenPairToResponse(w, pair)
+		render.JSON(w, response{Message: "User logged in successfully"})
+	})
 }
 
 // Refresh token pair using refresh token
-func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
-	type RefreshSuccessResponse struct {
+func handleTokenRefresh(as authService, l logger.Logger) http.Handler {
+	type response struct {
 		Message string `json:"message"`
 	}
 
-	refresh, err := h.authService.GetRefreshString(r)
-	if err != nil {
-		render.ServiceError(w, "Refresh token not found", http.StatusUnauthorized)
-	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-	pair, err := h.authService.RefreshPair(r.Context(), refresh)
-	if err != nil {
-		// Consider to log errors here
-		switch {
-		case errors.Is(err, apperrors.ErrRefreshTokenExpired):
-			render.ServiceError(w, "Refresh token expired", http.StatusUnauthorized)
-		default:
+		refresh, err := as.GetRefreshString(r)
+		if err != nil {
 			render.ServiceError(w, "Refresh token not found", http.StatusUnauthorized)
 		}
-		return
-	}
 
-	h.authService.SetTokenPairToResponse(w, pair)
-	render.JSON(w, RefreshSuccessResponse{Message: "Tokens refreshed successfully"})
+		pair, err := as.RefreshPair(r.Context(), refresh)
+		if err != nil {
+			// Consider to log errors here
+			switch {
+			case errors.Is(err, apperrors.ErrRefreshTokenExpired):
+				render.ServiceError(w, "Refresh token expired", http.StatusUnauthorized)
+			default:
+				render.ServiceError(w, "Refresh token not found", http.StatusUnauthorized)
+			}
+			return
+		}
+
+		as.SetTokenPairToResponse(w, pair)
+		render.JSON(w, response{Message: "Tokens refreshed successfully"})
+	})
 }

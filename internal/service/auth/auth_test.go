@@ -261,13 +261,13 @@ func Test_Auth(t *testing.T) {
 		})
 	})
 
-	t.Run("Auth", func(t *testing.T) {
+	t.Run("GetUserFromRequest", func(t *testing.T) {
 		inTx(pg.Pool, time.Second, time.Hour, t, func(s *AuthService) {
 			_, err := s.Register(t.Context(), "nk", "pwd")
 			require.NoError(t, err)
 
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				user, err := s.Auth(t.Context(), r)
+				user, err := s.GetUserFromRequest(t.Context(), r)
 				if err != nil {
 					http.Error(w, "fuck off", http.StatusBadRequest)
 					return
