@@ -45,6 +45,8 @@ type BalanceRepo interface {
 	CreateBalance(ctx context.Context, userID uuid.UUID) error
 	GetBalance(ctx context.Context, userID uuid.UUID, lock bool) (models.Balance, error)
 	UpdateBalance(ctx context.Context, userID uuid.UUID, delta decimal.Decimal) (models.Balance, error)
+	CreateTransaction(ctx context.Context, t models.Transaction) (models.Transaction, error)
+	ListTransactions(ctx context.Context, userID uuid.UUID, withdrawn bool) ([]models.Transaction, error)
 }
 
 type Storage interface {

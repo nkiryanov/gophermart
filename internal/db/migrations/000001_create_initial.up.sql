@@ -35,9 +35,8 @@ create table transactions (
     processed_at timestamptz not null default now(),
     user_id uuid not null references users(id) on delete cascade,
     order_number varchar(255) not null,
-    type varchar(32) not null check (type in ('withdraw', 'accrual')),
-    amount numeric(10, 2) not null,
-    constraint transactions_unique_order_and_type unique (type, order_number)
+    type varchar(32) not null check (type in ('withdrawn', 'accrual')),
+    amount numeric(10, 2) not null
 );
 create index idx_transactions_user_id_type on transactions(user_id, type);
 
