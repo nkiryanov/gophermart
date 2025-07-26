@@ -14,13 +14,13 @@ import (
 )
 
 func TestRender_JSON(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		data := map[string]any{"key1": 1, "key2": "222"}
 		JSON(w, data)
 	}))
-	defer ts.Close()
+	defer srv.Close()
 
-	resp, err := http.Get(ts.URL + "/test")
+	resp, err := http.Get(srv.URL + "/test")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
@@ -32,13 +32,13 @@ func TestRender_JSON(t *testing.T) {
 }
 
 func TestRender_ServiceError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		message := "something terrible happened"
 		ServiceError(w, message, http.StatusForbidden)
 	}))
-	defer ts.Close()
+	defer srv.Close()
 
-	resp, err := http.Get(ts.URL + "/test")
+	resp, err := http.Get(srv.URL + "/test")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
@@ -90,9 +90,9 @@ func TestRender_DecodeError(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			resp, err := http.Post(ts.URL+"/test", "application/json", strings.NewReader(tc.requestBody))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Post(ts.URL+"/test", "application/json", strings.NewReader(tt.requestBody))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 			body, err := io.ReadAll(resp.Body)
@@ -100,7 +100,7 @@ func TestRender_DecodeError(t *testing.T) {
 			defer resp.Body.Close() //nolint:errcheck
 
 			assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-			assert.JSONEq(t, tc.expected, string(body))
+			assert.JSONEq(t, tt.expected, string(body))
 		})
 	}
 }
@@ -112,7 +112,7 @@ func TestRender_ValidationErrors(t *testing.T) {
 		Email    string `json:"email" validate:"email"`
 	}
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		invalidData := T{
 			Password: "123",
 			Email:    "not-valid-email",
@@ -124,11 +124,11 @@ func TestRender_ValidationErrors(t *testing.T) {
 		require.True(t, ok, "be sure you pass structure to validator")
 		ValidationErrors(w, errs)
 	}))
-	defer ts.Close()
+	defer srv.Close()
 
-	resp, err := http.Get(ts.URL + "/test")
+	resp, err := http.Get(srv.URL + "/test")
 	require.NoError(t, err)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	defer resp.Body.Close() //nolint:errcheck
@@ -152,66 +152,127 @@ func TestRender_ValidationErrors(t *testing.T) {
 }
 
 func TestRender_BindAndValidate(t *testing.T) {
-	type User struct {
-		Username string `json:"username" validate:"required"`
-	}
+	t.Run("response", func(t *testing.T) {
+		type request struct {
+			Username string `json:"username" validate:"required"`
+			Email    string `json:"email" validate:"email"`
+		}
 
-	tests := []struct {
-		name           string
-		requestBody    string
-		expectedStatus int
-		expectedBody   string
-	}{
-		{
-			name:           "valid request",
-			requestBody:    `{"username": "john"}`,
-			expectedStatus: http.StatusOK,
-			expectedBody:   `{"success": true}`,
-		},
-		{
-			name:           "invalid json",
-			requestBody:    `invalid-json`,
-			expectedStatus: http.StatusBadRequest,
-			expectedBody: `{
-				"error": "decoding_failed",
-				"message": "Failed to parse JSON: invalid character 'i' looking for beginning of value"
-			}`,
-		},
-		{
-			name:           "validation failed",
-			requestBody:    `{}`,
-			expectedStatus: http.StatusBadRequest,
-			expectedBody: `{
-				"error": "validation_failed",
-				"message": "Request validation failed",
-				"fields": {
-					"username": "This field is required"
-				}
-			}`,
-		},
-	}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := BindAndValidate[request](w, r)
+			if err != nil {
+				return // Error response already written
+			}
+			// Success case
+			JSON(w, map[string]bool{"success": true})
+		}))
+		defer srv.Close()
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				_, err := BindAndValidate[User](w, r)
-				if err != nil {
-					return // Error response already written
-				}
-				// Success case
-				JSON(w, map[string]bool{"success": true})
-			}))
-			defer ts.Close()
+		tests := []struct {
+			name           string
+			requestBody    string
+			expectedStatus int
+			expectedBody   string
+		}{
+			{
+				name:           "valid request",
+				requestBody:    `{"username": "john", "email": "nk@bro.ru"}`,
+				expectedStatus: http.StatusOK,
+				expectedBody:   `{"success": true}`,
+			},
+			{
+				name:           "invalid json",
+				requestBody:    `invalid-json`,
+				expectedStatus: http.StatusBadRequest,
+				expectedBody: `{
+					"error": "decoding_failed",
+					"message": "Failed to parse JSON: invalid character 'i' looking for beginning of value"
+				}`,
+			},
+			{
+				name:           "field validation fail",
+				requestBody:    `{}`,
+				expectedStatus: http.StatusUnprocessableEntity,
+				expectedBody: `{
+					"error": "validation_failed",
+					"message": "Request validation failed",
+					"fields": {
+						"username": "This field is required",
+						"email": "Invalid value"
+					}
+				}`,
+			},
+		}
 
-			resp, err := http.Post(ts.URL+"/test", "application/json", strings.NewReader(tc.requestBody))
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedStatus, resp.StatusCode)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			defer resp.Body.Close() //nolint:errcheck
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				resp, err := http.Post(srv.URL+"/test", "application/json", strings.NewReader(tt.requestBody))
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedStatus, resp.StatusCode)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				defer resp.Body.Close() //nolint:errcheck
 
-			assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
-			assert.JSONEq(t, tc.expectedBody, string(body))
-		})
-	}
+				assert.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+				assert.JSONEq(t, tt.expectedBody, string(body))
+			})
+		}
+	})
+
+	t.Run("luhn tag supported", func(t *testing.T) {
+		type request struct {
+			Number string `json:"number" validate:"luhn"`
+		}
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := BindAndValidate[request](w, r)
+			if err != nil {
+				return // Error response already written
+			}
+			// Success case
+			JSON(w, map[string]bool{"success": true})
+		}))
+		defer srv.Close()
+
+		tests := []struct {
+			name           string
+			requestBody    string
+			expectedStatus int
+			expectedBody   string
+		}{
+			{
+				name:           "valid luhn number",
+				requestBody:    `{"number": "17893729974"}`,
+				expectedStatus: http.StatusOK,
+				expectedBody:   `{"success": true}`,
+			},
+			{
+				name:           "invalid luhn number",
+				requestBody:    `{"number": "1234567890"}`,
+				expectedStatus: http.StatusUnprocessableEntity,
+				expectedBody: `
+				{
+					"error": "validation_failed",
+					"message": "Request validation failed",
+					"fields": {
+						"number": "Invalid value"
+					}
+				}`,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				resp, err := http.Post(srv.URL+"/test", "application/json", strings.NewReader(tt.requestBody))
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedStatus, resp.StatusCode)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				defer resp.Body.Close() //nolint:errcheck
+
+				require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+				require.JSONEq(t, tt.expectedBody, string(body))
+			})
+		}
+	})
 }

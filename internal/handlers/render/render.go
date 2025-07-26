@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"github.com/go-playground/validator/v10"
 	"net/http"
-	"reflect"
-	"strings"
 )
 
 const (
@@ -19,16 +17,7 @@ const (
 var validate = validator.New()
 
 func init() {
-	// Return on 'TagName' json tag instead of struct name
-	// Look at documentation of 'RegisterTagNameFunc' for more details
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
-		// skip if tag key says it should be ignored
-		if name == "-" {
-			return ""
-		}
-		return name
-	})
+	configureValidator(validate)
 }
 
 type Struct any
@@ -94,7 +83,7 @@ func ValidationErrors(w http.ResponseWriter, errs validator.ValidationErrors) {
 		response.Fields[fieldError.Field()] = message
 	}
 
-	JSONWithStatus(w, response, http.StatusBadRequest)
+	JSONWithStatus(w, response, http.StatusUnprocessableEntity)
 }
 
 // BindAndValidate decodes JSON request body into type T and validates it using struct tags.
