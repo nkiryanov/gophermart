@@ -28,7 +28,10 @@ func Migrate(dsn string) error {
 	migrator, err := migrate.NewWithSourceInstance(
 		"iofs",
 		source,
-		strings.Replace(dsn, "postgres://", "pgx5://", 1), // golang-migrate expects dsn in format 'pgx5://...' only, make it happy with 'postgres://...'
+		strings.NewReplacer(
+			"postgres://", "pgx5://", // golang-migrate expects dsn in format 'pgx5://...' only, make it happy with 'postgres://...'
+			"postgresql://", "pgx5://", // golang-migrate expects
+		).Replace(dsn),
 	)
 	if err != nil {
 		return fmt.Errorf("error while preparing migrator. Err: %w", err)
