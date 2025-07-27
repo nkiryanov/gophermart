@@ -35,10 +35,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, number string, user *mod
 	return s.storage.Order().CreateOrder(ctx, number, user.ID, opts...)
 }
 
-func (s *OrderService) ListOrders(ctx context.Context, user *models.User) ([]models.Order, error) {
-	return s.storage.Order().ListOrders(ctx, repository.ListOrdersParams{
-		UserID: &user.ID,
-	})
+func (s *OrderService) ListOrders(ctx context.Context, opts repository.ListOrdersOpts) ([]models.Order, error) {
+	return s.storage.Order().ListOrders(ctx, opts)
 }
 
 func (s *OrderService) SetProcessed(ctx context.Context, number string, newStatus string, accrual decimal.Decimal) (models.Order, error) {

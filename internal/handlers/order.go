@@ -14,6 +14,7 @@ import (
 	"github.com/nkiryanov/gophermart/internal/handlers/userctx"
 	"github.com/nkiryanov/gophermart/internal/logger"
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 type orderResponse struct {
@@ -79,7 +80,7 @@ func handleListOrder(orderService orderService, l logger.Logger) http.Handler {
 			return
 		}
 
-		orders, err := orderService.ListOrders(r.Context(), &user)
+		orders, err := orderService.ListOrders(r.Context(), repository.ListOrdersOpts{UserID: &user.ID})
 		if err != nil {
 			render.ServiceError(w, "Failed to list orders", http.StatusInternalServerError)
 			return

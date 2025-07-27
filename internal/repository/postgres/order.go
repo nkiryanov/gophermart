@@ -71,7 +71,7 @@ func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.
 
 }
 
-func (r *OrderRepo) ListOrders(ctx context.Context, params repository.ListOrdersParams) ([]models.Order, error) {
+func (r *OrderRepo) ListOrders(ctx context.Context, opts repository.ListOrdersOpts) ([]models.Order, error) {
 	args := []any{}
 	argPos := 1
 	whereParams := 0
@@ -79,35 +79,35 @@ func (r *OrderRepo) ListOrders(ctx context.Context, params repository.ListOrders
 	b := &strings.Builder{}
 	fmt.Fprint(b, "SELECT * FROM orders\n")
 
-	if params.UserID != nil {
+	if opts.UserID != nil {
 		fmt.Fprintf(b, "WHERE user_id = $%d\n", argPos)
-		args = append(args, *params.UserID)
+		args = append(args, *opts.UserID)
 		argPos++
 		whereParams++
 	}
 
-	if len(params.Statuses) > 0 {
+	if len(opts.Statuses) > 0 {
 		if whereParams > 0 {
 			fmt.Fprint(b, "AND ")
 		} else {
 			fmt.Fprint(b, "WHERE ")
 		}
 		fmt.Fprintf(b, "status = ANY($%d)\n", argPos)
-		args = append(args, params.Statuses)
+		args = append(args, opts.Statuses)
 		argPos++
 	}
 
 	fmt.Fprint(b, "ORDER BY uploaded_at DESC\n")
 
-	if params.Limit != nil {
+	if opts.Limit != nil {
 		fmt.Fprintf(b, "LIMIT $%d\n", argPos)
-		args = append(args, *params.Limit)
+		args = append(args, *opts.Limit)
 		argPos++
 	}
 
-	if params.Offset != nil {
+	if opts.Offset != nil {
 		fmt.Fprintf(b, "OFFSET $%d\n", argPos)
-		args = append(args, *params.Offset)
+		args = append(args, *opts.Offset)
 	}
 
 	rows, _ := r.DB.Query(ctx, b.String(), args...)
