@@ -27,7 +27,7 @@ func NewService(storage repository.Storage) *OrderService {
 
 type OrderOption func(*models.Order)
 
-func (s *OrderService) CreateOrder(ctx context.Context, number string, user *models.User, opts ...models.OrderOption) (models.Order, error) {
+func (s *OrderService) CreateOrder(ctx context.Context, number string, user *models.User, opts ...repository.CreateOrderOption) (models.Order, error) {
 	err := validate.Luhn(number)
 	if err != nil {
 		return models.Order{}, apperrors.ErrOrderNumberInvalid
@@ -36,7 +36,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, number string, user *mod
 }
 
 func (s *OrderService) ListOrders(ctx context.Context, user *models.User) ([]models.Order, error) {
-	return s.storage.Order().ListOrders(ctx, user.ID)
+	return s.storage.Order().ListOrders(ctx, repository.ListOrdersParams{
+		UserID: &user.ID,
+	})
 }
 
 func (s *OrderService) SetProcessed(ctx context.Context, number string, newStatus string, accrual decimal.Decimal) (models.Order, error) {

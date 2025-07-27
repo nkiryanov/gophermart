@@ -9,6 +9,7 @@ import (
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/repository"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/user"
 	"github.com/nkiryanov/gophermart/internal/testutil"
@@ -107,7 +108,7 @@ func TestOrder(t *testing.T) {
 		t.Run("order in invalid status cannot be updated", func(t *testing.T) {
 			withTx(t, func(s *OrderService, user *models.User, _ *models.User) {
 				// Create order first
-				order, err := s.CreateOrder(t.Context(), "17893729974", user, models.WithOrderStatus(models.OrderStatusInvalid))
+				order, err := s.CreateOrder(t.Context(), "17893729974", user, repository.WithOrderStatus(models.OrderStatusInvalid))
 				require.NoError(t, err, "creating order should not fail")
 
 				_, err = s.SetProcessed(t.Context(), order.Number, models.OrderStatusProcessed, decimal.RequireFromString("100.50"))

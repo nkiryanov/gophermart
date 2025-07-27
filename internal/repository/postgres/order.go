@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+
+	"github.com/nkiryanov/gophermart/internal/repository"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
@@ -18,7 +21,7 @@ type OrderRepo struct {
 	DB DBTX
 }
 
-func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...models.OrderOption) (models.Order, error) {
+func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...repository.CreateOrderOption) (models.Order, error) {
 	// Create order with provided options
 	// If order with the number or id already exists return it as is
 	const createOrder = `-- name: CreateOrder
@@ -68,14 +71,46 @@ func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.
 
 }
 
-func (r *OrderRepo) ListOrders(ctx context.Context, userID uuid.UUID) ([]models.Order, error) {
-	const listOrders = `
-	SELECT * FROM orders
-	WHERE user_id = $1
-	ORDER BY uploaded_at DESC
-	`
+func (r *OrderRepo) ListOrders(ctx context.Context, params repository.ListOrdersParams) ([]models.Order, error) {
+	args := []any{}
+	argPos := 1
+	whereParams := 0
 
-	rows, _ := r.DB.Query(ctx, listOrders, userID)
+	b := &strings.Builder{}
+	fmt.Fprint(b, "SELECT * FROM orders\n")
+
+	if params.UserID != nil {
+		fmt.Fprintf(b, "WHERE user_id = $%d\n", argPos)
+		args = append(args, *params.UserID)
+		argPos++
+		whereParams++
+	}
+
+	if len(params.Statuses) > 0 {
+		if whereParams > 0 {
+			fmt.Fprint(b, "AND ")
+		} else {
+			fmt.Fprint(b, "WHERE ")
+		}
+		fmt.Fprintf(b, "status = ANY($%d)\n", argPos)
+		args = append(args, params.Statuses)
+		argPos++
+	}
+
+	fmt.Fprint(b, "ORDER BY uploaded_at DESC\n")
+
+	if params.Limit != nil {
+		fmt.Fprintf(b, "LIMIT $%d\n", argPos)
+		args = append(args, *params.Limit)
+		argPos++
+	}
+
+	if params.Offset != nil {
+		fmt.Fprintf(b, "OFFSET $%d\n", argPos)
+		args = append(args, *params.Offset)
+	}
+
+	rows, _ := r.DB.Query(ctx, b.String(), args...)
 	orders, err := pgx.CollectRows(rows, rowToOrder)
 
 	switch err {

@@ -10,6 +10,7 @@ import (
 	"github.com/nkiryanov/gophermart/internal/handlers/middleware"
 	"github.com/nkiryanov/gophermart/internal/logger"
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 // chain applies middlewares in the given order: m1(m2(...(h)))
@@ -79,7 +80,7 @@ type authService interface {
 }
 
 type orderService interface {
-	CreateOrder(ctx context.Context, number string, user *models.User, opts ...models.OrderOption) (models.Order, error)
+	CreateOrder(ctx context.Context, number string, user *models.User, opts ...repository.CreateOrderOption) (models.Order, error)
 	ListOrders(ctx context.Context, user *models.User) ([]models.Order, error)
 }
 
