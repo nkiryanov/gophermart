@@ -46,16 +46,17 @@ type OrderAccrual struct {
 }
 
 type Client struct {
-	AccrualAddr string
+	addr string
 
 	client *http.Client
 	logger logger.Logger
 }
 
-func NewClient(addr string) *Client {
+func NewClient(addr string, logger logger.Logger) *Client {
 	return &Client{
-		AccrualAddr: addr,
-		client:      &http.Client{},
+		addr:   addr,
+		logger: logger,
+		client: &http.Client{},
 	}
 }
 
@@ -65,7 +66,7 @@ func (c *Client) GetOrderAccrual(ctx context.Context, number string) (OrderAccru
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.AccrualAddr+"/api/orders/"+number, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/api/orders/"+number, nil)
 	if err != nil {
 		return accrual, NewAccrualError(CodeUnknown, 0, fmt.Errorf("failed to create request: %w", err))
 	}
