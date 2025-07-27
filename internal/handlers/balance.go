@@ -76,6 +76,8 @@ func handleWithdraw(userService userService, l logger.Logger) http.Handler {
 			return
 		case errors.Is(err, apperrors.ErrBalanceInsufficient):
 			render.ServiceError(w, "Insufficient balance", http.StatusPaymentRequired)
+		case errors.Is(err, apperrors.ErrOrderNumberInvalid):
+			render.ServiceError(w, "Invalid order number", http.StatusUnprocessableEntity)
 		default:
 			l.Error("Failed to get balance", "error", err)
 			render.ServiceError(w, "Internal server error", http.StatusInternalServerError)

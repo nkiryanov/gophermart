@@ -3,10 +3,15 @@ package order
 import (
 	"context"
 	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/repository"
+	"github.com/nkiryanov/gophermart/internal/service/validate"
 )
 
 type OrderService struct {
@@ -23,7 +28,7 @@ func NewService(storage repository.Storage) *OrderService {
 type OrderOption func(*models.Order)
 
 func (s *OrderService) CreateOrder(ctx context.Context, number string, user *models.User, opts ...models.OrderOption) (models.Order, error) {
-	err := validateLuhn(number)
+	err := validate.Luhn(number)
 	if err != nil {
 		return models.Order{}, apperrors.ErrOrderNumberInvalid
 	}
@@ -34,35 +39,56 @@ func (s *OrderService) ListOrders(ctx context.Context, user *models.User) ([]mod
 	return s.storage.Order().ListOrders(ctx, user.ID)
 }
 
-func validateLuhn(number string) error {
-	// Convert number in digits and save in slice in reverse order
-	// It's ok to work with string as bytes here
-	digits := make([]int, 0, len(number))
-	for i := len(number) - 1; i >= 0; i-- {
-		n := number[i]
-		if n < '0' || n > '9' {
-			return errors.New("number contains invalid characters")
-		}
-		digits = append(digits, int(n-'0'))
+func (s *OrderService) SetProcessed(ctx context.Context, number string, newStatus string, accrual decimal.Decimal) (models.Order, error) {
+	var order models.Order
+
+	if accrual.IsNegative() {
+		return order, errors.New("accrual can't be negative")
 	}
 
-	sum := 0
-	for i, digit := range digits {
-		position := i + 1
-		if position%2 == 0 {
-			digit *= 2
-			if digit > 9 {
-				digit = (digit % 10) + 1
-			}
+	err := s.storage.InTx(ctx, func(storage repository.Storage) error {
+		var err error
+
+		// lock order and order to update
+		order, err = storage.Order().GetOrder(ctx, number, true)
+		if err != nil {
+			return err
+		}
+		_, err = storage.Balance().GetBalance(ctx, order.UserID, true)
+		if err != nil {
+			return err
 		}
 
-		sum += digit
-	}
+		if order.Status == models.OrderStatusProcessed || order.Status == models.OrderStatusInvalid {
+			return apperrors.ErrOrderAlreadyProcessed
+		}
 
-	switch sum % 10 {
-	case 0:
+		// Update order and related objects
+		t, err := storage.Balance().CreateTransaction(ctx, models.Transaction{
+			ID:          uuid.New(),
+			ProcessedAt: time.Now(),
+			UserID:      order.UserID,
+			OrderNumber: order.Number,
+			Type:        models.TransactionTypeAccrual,
+			Amount:      accrual,
+		})
+		if err != nil {
+			return err
+		}
+		_, err = storage.Balance().UpdateBalance(ctx, t)
+		if err != nil {
+			return err
+		}
+		order, err = storage.Order().UpdateOrder(ctx, number, &newStatus, &accrual)
+		if err != nil {
+			return err
+		}
+
 		return nil
-	default:
-		return errors.New("number is not valid according to Luhn algorithm")
+	})
+	if err != nil {
+		return order, err
 	}
+
+	return order, nil
 }

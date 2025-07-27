@@ -59,7 +59,7 @@ func Test_BalanceWithdraw(t *testing.T) {
 
 		t.Run("withdraw insufficient fail", func(t *testing.T) {
 			testutil.InTx(tx, t, func(_ pgx.Tx) {
-				resp := doWithdraw(t, request{Order: "1234", Sum: 1000})
+				resp := doWithdraw(t, request{Order: "2444", Sum: 1000})
 				defer resp.Body.Close() // nolint:errcheck
 				body, err := io.ReadAll(resp.Body)
 				require.NoError(t, err, "failed to read response body")
@@ -84,7 +84,7 @@ func Test_BalanceWithdraw(t *testing.T) {
 				})
 				require.NoError(t, err, "failed to update balance")
 
-				resp := doWithdraw(t, request{Order: "1234", Sum: 1000})
+				resp := doWithdraw(t, request{Order: "2444", Sum: 1000})
 				defer resp.Body.Close() // nolint:errcheck
 				body, err := io.ReadAll(resp.Body)
 				require.NoError(t, err, "failed to read response body")
