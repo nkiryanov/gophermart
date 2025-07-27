@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
@@ -58,12 +57,17 @@ type TokenManager struct {
 }
 
 func New(cfg Config, storage repository.Storage) (*TokenManager, error) {
-	if cfg.SecretKey == "" {
-		return nil, errors.New("secret key must not be empty")
-	}
-
 	if cfg.Alg == "" {
 		cfg.Alg = defaultSigningMethod
+	}
+
+	if cfg.SecretKey == "" {
+		key := make([]byte, 32)
+		_, err := rand.Read(key)
+		if err != nil {
+			return nil, fmt.Errorf("secret key could not be generated: %w", err)
+		}
+		cfg.SecretKey = hex.EncodeToString(key)
 	}
 
 	setDefaultDuration := func(field *time.Duration, def time.Duration) {
