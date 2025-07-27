@@ -34,7 +34,7 @@ func TestOrders(t *testing.T) {
 			require.NoError(t, err)
 
 			t.Run("create ok", func(t *testing.T) {
-				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
+				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
 					order, err := storage.Order().CreateOrder(t.Context(), "123", user.ID)
 
 					require.NoError(t, err, "order has to be created ok")
@@ -50,7 +50,7 @@ func TestOrders(t *testing.T) {
 			})
 
 			t.Run("create twice", func(t *testing.T) {
-				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
+				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
 					_, err := storage.Order().CreateOrder(t.Context(), "123", user.ID)
 					require.NoError(t, err, "order has to be created ok")
 
@@ -63,7 +63,7 @@ func TestOrders(t *testing.T) {
 			})
 
 			t.Run("create conflict", func(t *testing.T) {
-				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
+				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
 					_, err := storage.Order().CreateOrder(t.Context(), "123", user.ID)
 					require.NoError(t, err, "order has to be created ok")
 					yaUser, err := storage.User().CreateUser(t.Context(), "anotheruser", "hashedpassword")
@@ -86,7 +86,7 @@ func TestOrders(t *testing.T) {
 			require.NoError(t, err)
 
 			t.Run("empty list", func(t *testing.T) {
-				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
+				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
 					orders, err := storage.Order().ListOrders(t.Context(), user.ID)
 
 					require.NoError(t, err, "listing orders should not fail")
@@ -95,7 +95,7 @@ func TestOrders(t *testing.T) {
 			})
 
 			t.Run("single order", func(t *testing.T) {
-				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
+				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
 					createdOrder, err := storage.Order().CreateOrder(t.Context(), "456", user.ID)
 					require.NoError(t, err)
 
@@ -113,7 +113,7 @@ func TestOrders(t *testing.T) {
 			})
 
 			t.Run("multiple orders", func(t *testing.T) {
-				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
+				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
 					order, err := storage.Order().CreateOrder(t.Context(), "111", user.ID)
 					require.NoError(t, err)
 					yaOrder, err := storage.Order().CreateOrder(t.Context(), "222", user.ID,
@@ -144,5 +144,47 @@ func TestOrders(t *testing.T) {
 				})
 			})
 		})
+	})
+
+	t.Run("UpdateOrder", func(t *testing.T) {
+		inTx(t, pg.Pool, func(tx pgx.Tx, storage repository.Storage) {
+			user, err := storage.User().CreateUser(t.Context(), "user1", "hashedpassword")
+			require.NoError(t, err)
+
+			order, err := storage.Order().CreateOrder(t.Context(), "456", user.ID)
+			require.NoError(t, err)
+
+			t.Run("update status and accrual", func(t *testing.T) {
+				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
+					status := models.OrderStatusProcessed
+					accrual := decimal.RequireFromString("123.45")
+
+					got, err := storage.Order().UpdateOrder(t.Context(), order.Number, &status, &accrual)
+					require.NoError(t, err, "updating order should not fail")
+
+					require.Equal(t, order.ID, got.ID, "order ID should not change")
+					require.Equal(t, status, got.Status, "order status should be updated")
+					require.True(t, accrual.Equal(got.Accrual), "order accrual should be updated")
+					require.Equal(t, order.UserID, got.UserID)
+					require.Equal(t, order.UploadedAt, got.UploadedAt, "should not changed")
+					require.NotEqual(t, order.ModifiedAt, got.ModifiedAt, "modified_at should be updated")
+				})
+			})
+
+			t.Run("do nothing if all nil", func(t *testing.T) {
+				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
+					got, err := storage.Order().UpdateOrder(t.Context(), order.Number, nil, nil)
+					require.NoError(t, err, "updating order should not fail")
+
+					require.Equal(t, order.ID, got.ID, "order ID should not change")
+					require.Equal(t, order.Status, got.Status, "order status should be updated")
+					require.True(t, got.Accrual.Equal(order.Accrual), "order accrual should be updated")
+					require.Equal(t, order.UserID, got.UserID)
+					require.Equal(t, order.UploadedAt, got.UploadedAt, "should not changed")
+					require.Equal(t, order.ModifiedAt, got.ModifiedAt, "modified_at must not be changed")
+				})
+			})
+		})
+
 	})
 }

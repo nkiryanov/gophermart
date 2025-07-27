@@ -176,7 +176,7 @@ func TestUser(t *testing.T) {
 			inTx(t, func(s *UserService, storage repository.Storage) {
 				user := setup(t, s, storage)
 
-				_, err := s.Withdraw(t.Context(), user.ID, "1234", decimal.NewFromInt(1500)) // Trying to withdraw more than balance
+				_, err := s.Withdraw(t.Context(), user.ID, "2444", decimal.NewFromInt(1500)) // Trying to withdraw more than balance
 
 				require.Error(t, err, "withdrawing more than balance should fail")
 				require.ErrorIs(t, err, apperrors.ErrBalanceInsufficient)
@@ -189,11 +189,22 @@ func TestUser(t *testing.T) {
 
 				// Withdraw 900 from balance
 				withdrawnAmount := decimal.NewFromInt(900)
-				balance, err := s.Withdraw(t.Context(), user.ID, "1234", withdrawnAmount)
+				balance, err := s.Withdraw(t.Context(), user.ID, "2444", withdrawnAmount)
 
 				require.NoError(t, err, "withdrawing valid amount should succeed")
 				require.True(t, balance.Current.Equal(decimal.NewFromInt(100)), "not expected balance after withdrawal")
 				require.Truef(t, balance.Withdrawn.Equal(withdrawnAmount), "withdrawn amount should be %s", withdrawnAmount.String())
+			})
+		})
+
+		t.Run("withdrawn with invalid number", func(t *testing.T) {
+			inTx(t, func(s *UserService, storage repository.Storage) {
+				user := setup(t, s, storage)
+
+				_, err := s.Withdraw(t.Context(), user.ID, "1444", decimal.NewFromInt(100))
+
+				require.Error(t, err)
+				require.ErrorIs(t, err, apperrors.ErrOrderNumberInvalid, "should return ErrOrderNumberInvalid error")
 			})
 		})
 	})

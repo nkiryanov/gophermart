@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/shopspring/decimal"
 )
 
 // User repository interface
@@ -38,6 +39,8 @@ type RefreshTokenRepo interface {
 type OrderRepo interface {
 	CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...models.OrderOption) (models.Order, error)
 	ListOrders(ctx context.Context, userID uuid.UUID) ([]models.Order, error)
+	GetOrder(ctx context.Context, number string, lock bool) (models.Order, error)
+	UpdateOrder(ctx context.Context, number string, status *string, accrual *decimal.Decimal) (models.Order, error)
 }
 
 type BalanceRepo interface {

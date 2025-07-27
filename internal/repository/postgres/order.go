@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
@@ -17,21 +18,21 @@ type OrderRepo struct {
 	DB DBTX
 }
 
-// Create order with provided options
-// If order with the number or id already exists return it as is
-const createOrder = `-- name: CreateOrder
-WITH insert_order AS (
-	INSERT INTO orders (id, uploaded_at, modified_at, number, user_id, status, accrual)
-	VALUES ($1, $2, $3, $4, $5, $6, $7)
-	ON CONFLICT DO NOTHING
-	RETURNING *
-)
-SELECT * FROM insert_order
-UNION
-SELECT * FROM orders WHERE number = $4
-`
-
 func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...models.OrderOption) (models.Order, error) {
+	// Create order with provided options
+	// If order with the number or id already exists return it as is
+	const createOrder = `-- name: CreateOrder
+	WITH insert_order AS (
+		INSERT INTO orders (id, uploaded_at, modified_at, number, user_id, status, accrual)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT DO NOTHING
+		RETURNING *
+	)
+	SELECT * FROM insert_order
+	UNION
+	SELECT * FROM orders WHERE number = $4
+	`
+
 	now := time.Now()
 	orderID := uuid.New()
 
@@ -67,13 +68,13 @@ func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.
 
 }
 
-const listOrders = `
-SELECT * FROM orders
-WHERE user_id = $1
-ORDER BY uploaded_at DESC
-`
-
 func (r *OrderRepo) ListOrders(ctx context.Context, userID uuid.UUID) ([]models.Order, error) {
+	const listOrders = `
+	SELECT * FROM orders
+	WHERE user_id = $1
+	ORDER BY uploaded_at DESC
+	`
+
 	rows, _ := r.DB.Query(ctx, listOrders, userID)
 	orders, err := pgx.CollectRows(rows, rowToOrder)
 
@@ -82,6 +83,67 @@ func (r *OrderRepo) ListOrders(ctx context.Context, userID uuid.UUID) ([]models.
 		return orders, nil
 	default:
 		return nil, fmt.Errorf("db error: %w", err)
+	}
+}
+
+func (r OrderRepo) GetOrder(ctx context.Context, number string, lock bool) (models.Order, error) {
+	const getOrder = `
+	SELECT * FROM orders
+	WHERE number = $1
+	`
+
+	const getOrderForUpdate = `
+	SELECT * FROM orders
+	WHERE number = $1
+	FOR UPDATE
+	`
+
+	var query string
+
+	switch lock {
+	case true:
+		query = getOrderForUpdate
+	default:
+		query = getOrder
+	}
+
+	rows, _ := r.DB.Query(ctx, query, number)
+	order, err := pgx.CollectOneRow(rows, rowToOrder)
+
+	switch {
+	case err == nil:
+		return order, nil
+	case errors.Is(err, pgx.ErrNoRows):
+		return order, apperrors.ErrOrderNotFound
+	default:
+		return order, fmt.Errorf("db error: %w", err)
+	}
+}
+
+func (r *OrderRepo) UpdateOrder(ctx context.Context, number string, status *string, accrual *decimal.Decimal) (models.Order, error) {
+	const updateOrder = `
+	UPDATE orders
+	SET status = coalesce($2, status), accrual = coalesce($3, accrual), modified_at = coalesce($4, modified_at)
+	WHERE number = $1
+	RETURNING *
+	`
+	var modifiedAt *time.Time
+
+	if status != nil || accrual != nil {
+		t := time.Now()
+		modifiedAt = &t
+	}
+
+	rows, _ := r.DB.Query(ctx, updateOrder, number, status, accrual, modifiedAt)
+	order, err := pgx.CollectOneRow(rows, rowToOrder)
+
+	switch {
+	case err == nil:
+		return order, nil
+	case errors.Is(err, pgx.ErrNoRows):
+		return order, apperrors.ErrOrderNotFound
+	default:
+		return order, fmt.Errorf("db error: %w", err)
 	}
 }
 

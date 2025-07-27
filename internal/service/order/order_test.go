@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
@@ -82,6 +83,37 @@ func TestOrder(t *testing.T) {
 
 				require.Error(t, err, "creating order with existing number should fail")
 				require.ErrorIs(t, err, apperrors.ErrOrderNumberTaken)
+			})
+		})
+	})
+
+	t.Run("SetProcessed", func(t *testing.T) {
+		t.Run("order can be set to processed - updates balance, creates transaction, updates order", func(t *testing.T) {
+			withTx(t, func(s *OrderService, user *models.User, _ *models.User) {
+				order, err := s.CreateOrder(t.Context(), "17893729974", user)
+				require.NoError(t, err, "creating order should not fail")
+				require.Equal(t, models.OrderStatusNew, order.Status, "order should be new initially")
+
+				// Set order as processed
+				accrual := decimal.RequireFromString("100.50")
+				updatedOrder, err := s.SetProcessed(t.Context(), "17893729974", models.OrderStatusProcessed, accrual)
+
+				require.NoError(t, err, "setting order as processed should not fail")
+				require.Equal(t, models.OrderStatusProcessed, updatedOrder.Status, "order status should be processed")
+				require.True(t, updatedOrder.Accrual.Equal(accrual), "order accrual should match provided amount")
+			})
+		})
+
+		t.Run("order in invalid status cannot be updated", func(t *testing.T) {
+			withTx(t, func(s *OrderService, user *models.User, _ *models.User) {
+				// Create order first
+				order, err := s.CreateOrder(t.Context(), "17893729974", user, models.WithOrderStatus(models.OrderStatusInvalid))
+				require.NoError(t, err, "creating order should not fail")
+
+				_, err = s.SetProcessed(t.Context(), order.Number, models.OrderStatusProcessed, decimal.RequireFromString("100.50"))
+
+				require.Error(t, err, "updating already invalid order should fail")
+				require.ErrorIs(t, err, apperrors.ErrOrderAlreadyProcessed, "should return ErrOrderAlreadyProcessed error")
 			})
 		})
 	})

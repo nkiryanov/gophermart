@@ -12,9 +12,11 @@ var (
 	ErrRefreshTokenIsUsed   = errors.New("refresh token is used")
 	ErrRefreshTokenExpired  = errors.New("refresh token is expired")
 
-	ErrOrderNumberTaken   = errors.New("order number already exists for different user")
-	ErrOrderAlreadyExists = errors.New("order already exists for this user")
-	ErrOrderNumberInvalid = errors.New("order number is invalid")
+	ErrOrderNumberTaken      = errors.New("order number already exists for different user")
+	ErrOrderAlreadyExists    = errors.New("order already exists for this user")
+	ErrOrderNumberInvalid    = errors.New("order number is invalid")
+	ErrOrderNotFound         = errors.New("order not found")
+	ErrOrderAlreadyProcessed = errors.New("order already processed")
 
 	ErrBalanceInsufficient = errors.New("insufficient balance")
 )

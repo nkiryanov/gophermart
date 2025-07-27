@@ -9,6 +9,7 @@ import (
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
 	"github.com/nkiryanov/gophermart/internal/repository"
+	"github.com/nkiryanov/gophermart/internal/service/validate"
 	"github.com/shopspring/decimal"
 )
 
@@ -101,10 +102,15 @@ func (s *UserService) GetWithdrawals(ctx context.Context, userID uuid.UUID) ([]m
 }
 
 // Withdraw from user balance in transaction
-func (s *UserService) Withdraw(ctx context.Context, userID uuid.UUID, orderNum string, amount decimal.Decimal) (models.Balance, error) {
+func (s *UserService) Withdraw(ctx context.Context, userID uuid.UUID, orderNumber string, amount decimal.Decimal) (models.Balance, error) {
 	var balance models.Balance
 
-	err := s.storage.InTx(ctx, func(storage repository.Storage) error {
+	err := validate.Luhn(orderNumber)
+	if err != nil {
+		return balance, apperrors.ErrOrderNumberInvalid
+	}
+
+	err = s.storage.InTx(ctx, func(storage repository.Storage) error {
 		existedBalance, err := s.storage.Balance().GetBalance(ctx, userID, true)
 		if err != nil {
 			return err
@@ -118,7 +124,7 @@ func (s *UserService) Withdraw(ctx context.Context, userID uuid.UUID, orderNum s
 			ID:          uuid.New(),
 			ProcessedAt: time.Now(),
 			UserID:      userID,
-			OrderNumber: orderNum,
+			OrderNumber: orderNumber,
 			Type:        models.TransactionTypeWithdrawal,
 			Amount:      amount,
 		})

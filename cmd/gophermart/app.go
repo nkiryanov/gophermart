@@ -39,12 +39,12 @@ func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 	storage := postgres.NewStorage(pool)
 
 	// Initialize services
+	userService := user.NewService(user.DefaultHasher, storage)
+	orderService := order.NewService(storage)
 	tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: c.SecretKey}, storage)
 	if err != nil {
 		return nil, fmt.Errorf("token manager initialization: %w", err)
 	}
-	userService := user.NewService(user.DefaultHasher, storage)
-	orderService := order.NewService(storage)
 	authService, err := auth.NewService(auth.Config{}, tokenManager, userService)
 	if err != nil {
 		return nil, fmt.Errorf("auth service initialization: %w", err)
