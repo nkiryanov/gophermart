@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/repository"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 	"github.com/nkiryanov/gophermart/tests/e2e"
 )
@@ -86,7 +87,7 @@ func Test_OrdersCreate(t *testing.T) {
 
 		t.Run("create twice ok", func(t *testing.T) {
 			testutil.InTx(tx, t, func(_ pgx.Tx) {
-				order, err := s.OrderService.CreateOrder(t.Context(), "17893729974", &user, models.WithOrderStatus(models.OrderStatusProcessed))
+				order, err := s.OrderService.CreateOrder(t.Context(), "17893729974", &user, repository.WithOrderStatus(models.OrderStatusProcessed))
 				require.NoError(t, err, "order has to be created ok")
 
 				req := createOrderReq("test-user", "pwd", "17893729974", t)

@@ -55,7 +55,7 @@ func TestOrders(t *testing.T) {
 					require.NoError(t, err, "order has to be created ok")
 
 					// Crete order second time but with different status
-					_, err = storage.Order().CreateOrder(t.Context(), "123", user.ID, models.WithOrderStatus(models.OrderStatusProcessed))
+					_, err = storage.Order().CreateOrder(t.Context(), "123", user.ID, repository.WithOrderStatus(models.OrderStatusProcessed))
 
 					require.Error(t, err, "crating same order must failed")
 					require.ErrorIs(t, err, apperrors.ErrOrderAlreadyExists, "should return well known error")
@@ -70,7 +70,7 @@ func TestOrders(t *testing.T) {
 					require.NoError(t, err)
 
 					// Crete order second time but with different status
-					_, err = storage.Order().CreateOrder(t.Context(), "123", yaUser.ID, models.WithOrderStatus(models.OrderStatusProcessed))
+					_, err = storage.Order().CreateOrder(t.Context(), "123", yaUser.ID, repository.WithOrderStatus(models.OrderStatusProcessed))
 
 					require.Error(t, err, "crating same order must failed")
 					require.ErrorIs(t, err, apperrors.ErrOrderNumberTaken, "should return well known error")
@@ -87,7 +87,7 @@ func TestOrders(t *testing.T) {
 
 			t.Run("empty list", func(t *testing.T) {
 				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
-					orders, err := storage.Order().ListOrders(t.Context(), user.ID)
+					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersParams{UserID: &user.ID})
 
 					require.NoError(t, err, "listing orders should not fail")
 					require.Empty(t, orders, "orders list should be empty for new user")
@@ -99,7 +99,7 @@ func TestOrders(t *testing.T) {
 					createdOrder, err := storage.Order().CreateOrder(t.Context(), "456", user.ID)
 					require.NoError(t, err)
 
-					orders, err := storage.Order().ListOrders(t.Context(), user.ID)
+					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersParams{UserID: &user.ID})
 					require.NoError(t, err, "listing orders should not fail")
 
 					require.Len(t, orders, 1, "should return exactly one order")
@@ -117,12 +117,12 @@ func TestOrders(t *testing.T) {
 					order, err := storage.Order().CreateOrder(t.Context(), "111", user.ID)
 					require.NoError(t, err)
 					yaOrder, err := storage.Order().CreateOrder(t.Context(), "222", user.ID,
-						models.WithOrderStatus(models.OrderStatusProcessed),
-						models.WithOrderAccrual(decimal.RequireFromString("100.50")),
+						repository.WithOrderStatus(models.OrderStatusProcessed),
+						repository.WithOrderAccrual(decimal.RequireFromString("100.50")),
 					)
 					require.NoError(t, err)
 
-					orders, err := storage.Order().ListOrders(t.Context(), user.ID)
+					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersParams{UserID: &user.ID})
 					require.NoError(t, err, "listing orders should not fail")
 
 					require.Len(t, orders, 2)
@@ -137,7 +137,8 @@ func TestOrders(t *testing.T) {
 
 			t.Run("nonexistent user", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
-					orders, err := storage.Order().ListOrders(t.Context(), uuid.New())
+					userID := uuid.New() // Nonexistent user ID
+					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersParams{UserID: &userID})
 
 					require.NoError(t, err, "listing orders for nonexistent user should not fail")
 					require.Empty(t, orders, "should return empty list for nonexistent user")

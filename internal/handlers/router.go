@@ -10,6 +10,7 @@ import (
 	"github.com/nkiryanov/gophermart/internal/handlers/middleware"
 	"github.com/nkiryanov/gophermart/internal/logger"
 	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/repository"
 )
 
 // chain applies middlewares in the given order: m1(m2(...(h)))
@@ -41,7 +42,7 @@ func NewRouter(
 	apiuser.Handle("GET /orders", withAuth(handleListOrder(orderService, logger)))
 	apiuser.Handle("GET /balance", withAuth(handleUserBalance(userService, logger)))
 	apiuser.Handle("POST /balance/withdraw", withAuth(handleWithdraw(userService, logger)))
-	apiuser.Handle("GET /balance/withdrawals", withAuth(handleListWithdrawals(userService, logger)))
+	apiuser.Handle("GET /withdrawals", withAuth(handleListWithdrawals(userService, logger)))
 	apiuser.Handle("GET /me", withAuth(handleUserMe()))
 
 	root := http.NewServeMux()
@@ -79,7 +80,7 @@ type authService interface {
 }
 
 type orderService interface {
-	CreateOrder(ctx context.Context, number string, user *models.User, opts ...models.OrderOption) (models.Order, error)
+	CreateOrder(ctx context.Context, number string, user *models.User, opts ...repository.CreateOrderOption) (models.Order, error)
 	ListOrders(ctx context.Context, user *models.User) ([]models.Order, error)
 }
 

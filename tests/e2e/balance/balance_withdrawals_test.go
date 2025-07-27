@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	ListWithdrawalURL = "/api/user/balance/withdrawals"
+	ListWithdrawalURL = "/api/user/withdrawals"
 )
 
 func Test_BalanceListWithdraw(t *testing.T) {
