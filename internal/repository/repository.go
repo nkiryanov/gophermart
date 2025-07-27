@@ -38,7 +38,7 @@ type RefreshTokenRepo interface {
 	// Set tokens revoked for user (or something like that)
 }
 
-type ListOrdersParams struct {
+type ListOrdersOpts struct {
 	UserID   *uuid.UUID
 	Statuses []string
 	Limit    *int
@@ -59,7 +59,7 @@ func WithUploadedAt(t time.Time) func(*models.Order) {
 
 type OrderRepo interface {
 	CreateOrder(ctx context.Context, number string, userID uuid.UUID, opts ...CreateOrderOption) (models.Order, error)
-	ListOrders(ctx context.Context, params ListOrdersParams) ([]models.Order, error)
+	ListOrders(ctx context.Context, params ListOrdersOpts) ([]models.Order, error)
 	GetOrder(ctx context.Context, number string, lock bool) (models.Order, error)
 	UpdateOrder(ctx context.Context, number string, status *string, accrual *decimal.Decimal) (models.Order, error)
 }

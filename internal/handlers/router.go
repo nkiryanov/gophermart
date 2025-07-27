@@ -81,7 +81,7 @@ type authService interface {
 
 type orderService interface {
 	CreateOrder(ctx context.Context, number string, user *models.User, opts ...repository.CreateOrderOption) (models.Order, error)
-	ListOrders(ctx context.Context, user *models.User) ([]models.Order, error)
+	ListOrders(ctx context.Context, opts repository.ListOrdersOpts) ([]models.Order, error)
 }
 
 type userService interface {

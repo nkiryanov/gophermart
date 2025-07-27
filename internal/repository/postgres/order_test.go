@@ -87,7 +87,7 @@ func TestOrders(t *testing.T) {
 
 			t.Run("empty list", func(t *testing.T) {
 				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
-					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersParams{UserID: &user.ID})
+					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersOpts{UserID: &user.ID})
 
 					require.NoError(t, err, "listing orders should not fail")
 					require.Empty(t, orders, "orders list should be empty for new user")
@@ -99,7 +99,7 @@ func TestOrders(t *testing.T) {
 					createdOrder, err := storage.Order().CreateOrder(t.Context(), "456", user.ID)
 					require.NoError(t, err)
 
-					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersParams{UserID: &user.ID})
+					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersOpts{UserID: &user.ID})
 					require.NoError(t, err, "listing orders should not fail")
 
 					require.Len(t, orders, 1, "should return exactly one order")
@@ -122,7 +122,7 @@ func TestOrders(t *testing.T) {
 					)
 					require.NoError(t, err)
 
-					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersParams{UserID: &user.ID})
+					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersOpts{UserID: &user.ID})
 					require.NoError(t, err, "listing orders should not fail")
 
 					require.Len(t, orders, 2)
@@ -138,7 +138,7 @@ func TestOrders(t *testing.T) {
 			t.Run("nonexistent user", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
 					userID := uuid.New() // Nonexistent user ID
-					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersParams{UserID: &userID})
+					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersOpts{UserID: &userID})
 
 					require.NoError(t, err, "listing orders for nonexistent user should not fail")
 					require.Empty(t, orders, "should return empty list for nonexistent user")
