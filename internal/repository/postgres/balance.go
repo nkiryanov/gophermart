@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/shopspring/decimal"
-
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/shopspring/decimal"
+
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/models"
 )
@@ -81,31 +81,23 @@ func (r *BalanceRepo) GetBalance(ctx context.Context, userID uuid.UUID, lock boo
 }
 
 // Update user balance
-func (r *BalanceRepo) UpdateBalance(ctx context.Context, userID uuid.UUID, delta decimal.Decimal) (models.Balance, error) {
-	const withdrawn = `
+func (r *BalanceRepo) UpdateBalance(ctx context.Context, transaction models.Transaction) (models.Balance, error) {
+	const updateBalance = `
 	UPDATE balances
-	SET current = current - $2, withdrawn = withdrawn + $2
+	SET current = current + $2, withdrawn = withdrawn + $3
 	WHERE user_id = $1
 	RETURNING id, user_id, current, withdrawn
 	`
+	currentDelta := transaction.Amount
+	withdrawnDelta := decimal.Zero
 
-	const accrual = `
-	UPDATE balances
-	SET current = current + $2
-	WHERE user_id = $1
-	RETURNING id, user_id, current, withdrawn
-	`
-
-	var query string
-
-	switch delta.IsNegative() {
-	case true:
-		query = withdrawn
-	default:
-		query = accrual
+	if transaction.Type == models.TransactionTypeWithdrawal {
+		currentDelta = currentDelta.Neg()
+		withdrawnDelta = transaction.Amount
 	}
 
-	rows, _ := r.DB.Query(ctx, query, userID, delta.Abs())
+	rows, _ := r.DB.Query(ctx, updateBalance, transaction.UserID, currentDelta, withdrawnDelta)
+
 	balance, err := pgx.CollectOneRow(rows, func(row pgx.CollectableRow) (models.Balance, error) {
 		var b models.Balance
 		err := row.Scan(&b.ID, &b.UserID, &b.Current, &b.Withdrawn)
@@ -157,31 +149,19 @@ func (r *BalanceRepo) CreateTransaction(ctx context.Context, t models.Transactio
 	}
 }
 
-func (r *BalanceRepo) ListTransactions(ctx context.Context, userID uuid.UUID, withdrawn bool) ([]models.Transaction, error) {
+func (r *BalanceRepo) ListTransactions(ctx context.Context, userID uuid.UUID, types []string) ([]models.Transaction, error) {
 	const listTransactions = `
 	SELECT id, processed_at, user_id, order_number, type, amount
 	FROM transactions
-	WHERE user_id = $1
+	WHERE user_id = $1 and type = any($2::text[])
 	ORDER BY processed_at DESC
 	`
 
-	const listWithdrawn = `
-	SELECT id, processed_at, user_id, order_number, type, amount
-	FROM transactions
-	WHERE user_id = $1 and type = 'withdrawn'
-	ORDER BY processed_at DESC
-	`
-
-	var query string
-
-	switch withdrawn {
-	case true:
-		query = listWithdrawn
-	default:
-		query = listTransactions
+	if len(types) == 0 {
+		types = []string{models.TransactionTypeWithdrawal, models.TransactionTypeAccrual}
 	}
 
-	rows, _ := r.DB.Query(ctx, query, userID)
+	rows, _ := r.DB.Query(ctx, listTransactions, userID, types)
 	ts, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (models.Transaction, error) {
 		var tr models.Transaction
 		err := row.Scan(&tr.ID, &tr.ProcessedAt, &tr.UserID, &tr.OrderNumber, &tr.Type, &tr.Amount)

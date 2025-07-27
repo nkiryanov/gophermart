@@ -91,9 +91,11 @@ func TestBalance(t *testing.T) {
 			err = storage.Balance().CreateBalance(t.Context(), user.ID)
 			require.NoError(t, err)
 
+			accrualTransaction := models.Transaction{UserID: user.ID, Type: models.TransactionTypeAccrual, Amount: decimal.NewFromInt(100)}
+
 			t.Run("accrual", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
-					balance, err := storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(100))
+					balance, err := storage.Balance().UpdateBalance(t.Context(), accrualTransaction)
 					require.NoError(t, err, "updating balance should not fail")
 
 					require.Equal(t, user.ID, balance.UserID, "user ID should match")
@@ -107,30 +109,38 @@ func TestBalance(t *testing.T) {
 				})
 			})
 
-			t.Run("withdrawn", func(t *testing.T) {
+			t.Run("withdrawal", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
-					_, err := storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(100))
+					_, err := storage.Balance().UpdateBalance(t.Context(), accrualTransaction)
 					require.NoError(t, err, "updating balance should not fail")
 
-					balance, err := storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(-50))
+					balance, err := storage.Balance().UpdateBalance(t.Context(), models.Transaction{
+						UserID: user.ID,
+						Type:   models.TransactionTypeWithdrawal,
+						Amount: decimal.NewFromInt(70),
+					})
 					require.NoError(t, err, "withdrawing balance should not fail")
 
 					require.Equal(t, user.ID, balance.UserID, "user ID should match")
-					require.True(t, balance.Current.Equal(decimal.NewFromInt(50)), "current balance should be 50 after withdrawal")
-					require.True(t, balance.Withdrawn.Equal(decimal.NewFromInt(50)), "withdrawn balance should reflect withdrawal")
+					require.True(t, balance.Current.Equal(decimal.NewFromInt(30)), "current balance should be 50 after withdrawal")
+					require.True(t, balance.Withdrawn.Equal(decimal.NewFromInt(70)), "withdrawn balance should reflect withdrawal")
 
 					storedBalance, err := storage.Balance().GetBalance(t.Context(), user.ID, false)
 					require.NoError(t, err, "getting balance after withdrawal should not fail")
-					require.True(t, storedBalance.Current.Equal(decimal.NewFromInt(50)), "current balance should match after withdrawal")
-					require.True(t, storedBalance.Withdrawn.Equal(decimal.NewFromInt(50)), "withdrawn balance should match after withdrawal")
+					require.True(t, storedBalance.Current.Equal(decimal.NewFromInt(30)), "current balance should match after withdrawal")
+					require.True(t, storedBalance.Withdrawn.Equal(decimal.NewFromInt(70)), "withdrawn balance should match after withdrawal")
 				})
 			})
 
 			t.Run("withdrawn insufficient funds", func(t *testing.T) {
-				_, err := storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(100))
+				_, err := storage.Balance().UpdateBalance(t.Context(), accrualTransaction)
 				require.NoError(t, err, "updating balance should not fail")
 
-				_, err = storage.Balance().UpdateBalance(t.Context(), user.ID, decimal.NewFromInt(-201))
+				_, err = storage.Balance().UpdateBalance(t.Context(), models.Transaction{
+					UserID: user.ID,
+					Type:   models.TransactionTypeWithdrawal,
+					Amount: decimal.NewFromInt(200),
+				})
 				require.Error(t, err, "withdrawing more than available balance should fail")
 				require.ErrorIs(t, err, apperrors.ErrBalanceInsufficient, "should return insufficient funds error")
 			})
@@ -195,20 +205,20 @@ func TestTransactions(t *testing.T) {
 				})
 			})
 
-			t.Run("create withdrawn transaction", func(t *testing.T) {
+			t.Run("create withdrwal transaction", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
 					transaction := models.Transaction{
 						ID:          uuid.New(),
 						ProcessedAt: time.Now(),
 						UserID:      user.ID,
 						OrderNumber: "67890",
-						Type:        models.TransactionTypeWithdrawn,
+						Type:        models.TransactionTypeWithdrawal,
 						Amount:      decimal.NewFromInt(50),
 					}
 
 					createdTransaction, err := storage.Balance().CreateTransaction(t.Context(), transaction)
 
-					require.NoError(t, err, "creating withdrawn transaction should not fail")
+					require.NoError(t, err, "creating withdrawal transaction should not fail")
 					require.Equal(t, transaction.ID, createdTransaction.ID)
 					require.Equal(t, transaction.UserID, createdTransaction.UserID)
 					require.Equal(t, transaction.OrderNumber, createdTransaction.OrderNumber)
@@ -221,7 +231,7 @@ func TestTransactions(t *testing.T) {
 
 	t.Run("ListTransactions", func(t *testing.T) {
 		inTx(t, pg.Pool, func(tx pgx.Tx, storage repository.Storage) {
-			user, err := storage.User().CreateUser(t.Context(), "testuser", "hashedpassword")
+			user, err := storage.User().CreateUser(t.Context(), "test-user", "hashedpassword")
 			require.NoError(t, err)
 
 			// Create test transactions
@@ -230,7 +240,7 @@ func TestTransactions(t *testing.T) {
 				ProcessedAt: time.Now().Add(-2 * time.Hour),
 				UserID:      user.ID,
 				OrderNumber: "12345",
-				Type:        "accrual",
+				Type:        models.TransactionTypeAccrual,
 				Amount:      decimal.NewFromInt(100),
 			}
 
@@ -239,7 +249,7 @@ func TestTransactions(t *testing.T) {
 				ProcessedAt: time.Now().Add(-1 * time.Hour),
 				UserID:      user.ID,
 				OrderNumber: "67890",
-				Type:        "withdrawn",
+				Type:        models.TransactionTypeWithdrawal,
 				Amount:      decimal.NewFromInt(50),
 			}
 
@@ -250,7 +260,7 @@ func TestTransactions(t *testing.T) {
 
 			t.Run("list all transactions", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
-					transactions, err := storage.Balance().ListTransactions(t.Context(), user.ID, false)
+					transactions, err := storage.Balance().ListTransactions(t.Context(), user.ID, nil)
 
 					require.NoError(t, err, "listing all transactions should not fail")
 					require.Len(t, transactions, 2, "should return all transactions")
@@ -261,20 +271,20 @@ func TestTransactions(t *testing.T) {
 				})
 			})
 
-			t.Run("list withdrawn transactions only", func(t *testing.T) {
+			t.Run("list withdrawals transactions only", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
-					transactions, err := storage.Balance().ListTransactions(t.Context(), user.ID, true)
+					transactions, err := storage.Balance().ListTransactions(t.Context(), user.ID, []string{models.TransactionTypeWithdrawal})
 
 					require.NoError(t, err, "listing withdrawn transactions should not fail")
 					require.Len(t, transactions, 1, "should return only withdrawn transactions")
 					require.Equal(t, withdrawnTx.ID, transactions[0].ID)
-					require.Equal(t, "withdrawn", transactions[0].Type)
+					require.Equal(t, withdrawnTx.Type, transactions[0].Type, "transaction type should be withdrawal")
 				})
 			})
 
 			t.Run("list transactions for nonexistent user", func(t *testing.T) {
 				inTx(t, tx, func(ttx pgx.Tx, storage repository.Storage) {
-					transactions, err := storage.Balance().ListTransactions(t.Context(), uuid.New(), false)
+					transactions, err := storage.Balance().ListTransactions(t.Context(), uuid.New(), nil)
 
 					require.NoError(t, err, "listing transactions for nonexistent user should not fail")
 					require.Empty(t, transactions, "should return empty list for nonexistent user")

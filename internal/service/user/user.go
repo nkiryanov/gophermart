@@ -97,7 +97,7 @@ func (s *UserService) GetBalance(ctx context.Context, userID uuid.UUID) (models.
 }
 
 func (s *UserService) GetWithdrawals(ctx context.Context, userID uuid.UUID) ([]models.Transaction, error) {
-	return s.storage.Balance().ListTransactions(ctx, userID, true)
+	return s.storage.Balance().ListTransactions(ctx, userID, []string{models.TransactionTypeWithdrawal})
 }
 
 // Withdraw from user balance in transaction
@@ -119,14 +119,14 @@ func (s *UserService) Withdraw(ctx context.Context, userID uuid.UUID, orderNum s
 			ProcessedAt: time.Now(),
 			UserID:      userID,
 			OrderNumber: orderNum,
-			Type:        models.TransactionTypeWithdrawn,
+			Type:        models.TransactionTypeWithdrawal,
 			Amount:      amount,
 		})
 		if err != nil {
 			return err
 		}
 
-		balance, err = s.storage.Balance().UpdateBalance(ctx, userID, t.Amount.Neg())
+		balance, err = s.storage.Balance().UpdateBalance(ctx, t)
 		if err != nil {
 			return err
 		}
@@ -134,7 +134,7 @@ func (s *UserService) Withdraw(ctx context.Context, userID uuid.UUID, orderNum s
 		return nil
 	})
 	if err != nil {
-		return balance, fmt.Errorf("can't withdraw. Err: %w", err)
+		return balance, fmt.Errorf("withdrawn failed: %w", err)
 	}
 
 	return balance, nil

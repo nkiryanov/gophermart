@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	TransactionTypeAccrual   = "accrual"
-	TransactionTypeWithdrawn = "withdrawn"
+	TransactionTypeAccrual    = "accrual"
+	TransactionTypeWithdrawal = "withdrawal"
 )
 
 type Balance struct {

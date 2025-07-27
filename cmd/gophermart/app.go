@@ -19,7 +19,7 @@ import (
 type ServerApp struct {
 	ListenAddr string
 	Handler    http.Handler
-	Logger logger.Logger
+	Logger     logger.Logger
 }
 
 func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
@@ -60,7 +60,7 @@ func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 	return &ServerApp{
 		ListenAddr: c.ListenAddr,
 		Handler:    mux,
-		Logger: logger,
+		Logger:     logger,
 	}, nil
 }
 
