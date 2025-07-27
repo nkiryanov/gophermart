@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 type ServerApp struct {
 	ListenAddr string
 	Handler    http.Handler
+	Logger logger.Logger
 }
 
 func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
@@ -41,13 +41,13 @@ func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 	// Initialize services
 	tokenManager, err := tokenmanager.New(tokenmanager.Config{SecretKey: c.SecretKey}, storage)
 	if err != nil {
-		return nil, fmt.Errorf("error while creating token manager")
+		return nil, fmt.Errorf("token manager initialization: %w", err)
 	}
 	userService := user.NewService(user.DefaultHasher, storage)
 	orderService := order.NewService(storage)
 	authService, err := auth.NewService(auth.Config{}, tokenManager, userService)
 	if err != nil {
-		return nil, fmt.Errorf("error while creating auth service. Err: %w", err)
+		return nil, fmt.Errorf("auth service initialization: %w", err)
 	}
 
 	mux := handlers.NewRouter(
@@ -60,6 +60,7 @@ func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 	return &ServerApp{
 		ListenAddr: c.ListenAddr,
 		Handler:    mux,
+		Logger: logger,
 	}, nil
 }
 
@@ -71,29 +72,23 @@ func (s *ServerApp) Run(ctx context.Context) error {
 	}
 
 	idleConnsClosed := make(chan struct{})
-	srvCtx, srvCtxCancel := context.WithCancel(ctx)
-	defer srvCtxCancel()
-
 	go func() {
-		<-srvCtx.Done()
+		<-ctx.Done()
 
 		timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		if err := httpServer.Shutdown(timeoutCtx); err == context.DeadlineExceeded {
-			// Consider to user logger dependency
-			slog.Error("HTTP server shutdown timeout exceeded, forcing shutdown...")
+			s.Logger.Error("HTTP server shutdown timeout exceeded, forcing shutdown...")
 		}
-		// Consider to user logger dependency
-		slog.Info("HTTP server stopped")
+
+		s.Logger.Info("HTTP server stopped")
 		close(idleConnsClosed)
 	}()
 
-	// Listen and serve until context is cancelled; then close gracefully connections
-	slog.Info("Starting server")
+	s.Logger.Info("Listening on address", "address", s.ListenAddr)
 	err := httpServer.ListenAndServe()
-	srvCtxCancel()
-	<-idleConnsClosed
 
+	<-idleConnsClosed
 	return err
 }
