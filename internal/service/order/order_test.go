@@ -50,7 +50,7 @@ func TestOrder(t *testing.T) {
 				require.Equal(t, models.OrderStatusNew, order.Status, "order status new by default")
 				require.NotZero(t, order.UploadedAt, "order uploaded at should be set")
 				require.NotZero(t, order.ModifiedAt, "order modified at should be set")
-				require.True(t, order.Accrual.IsZero(), "order accrual should be zero by default")
+				require.Nil(t, order.Accrual, "order accrual should be nil for new orders")
 			})
 		})
 
@@ -89,7 +89,7 @@ func TestOrder(t *testing.T) {
 	})
 
 	t.Run("SetProcessed", func(t *testing.T) {
-		t.Run("order can be set to processed - updates balance, creates transaction, updates order", func(t *testing.T) {
+		t.Run("order can be set to processed", func(t *testing.T) {
 			withTx(t, func(s *OrderService, user *models.User, _ *models.User) {
 				order, err := s.CreateOrder(t.Context(), "17893729974", user)
 				require.NoError(t, err, "creating order should not fail")
@@ -97,10 +97,11 @@ func TestOrder(t *testing.T) {
 
 				// Set order as processed
 				accrual := decimal.RequireFromString("100.50")
-				updatedOrder, err := s.SetProcessed(t.Context(), "17893729974", models.OrderStatusProcessed, accrual)
+				updatedOrder, err := s.SetProcessed(t.Context(), "17893729974", models.OrderStatusProcessed, &accrual)
 
 				require.NoError(t, err, "setting order as processed should not fail")
 				require.Equal(t, models.OrderStatusProcessed, updatedOrder.Status, "order status should be processed")
+				require.NotNil(t, updatedOrder.Accrual, "order accrual should be set")
 				require.True(t, updatedOrder.Accrual.Equal(accrual), "order accrual should match provided amount")
 			})
 		})
@@ -111,7 +112,7 @@ func TestOrder(t *testing.T) {
 				order, err := s.CreateOrder(t.Context(), "17893729974", user, repository.WithOrderStatus(models.OrderStatusInvalid))
 				require.NoError(t, err, "creating order should not fail")
 
-				_, err = s.SetProcessed(t.Context(), order.Number, models.OrderStatusProcessed, decimal.RequireFromString("100.50"))
+				_, err = s.SetProcessed(t.Context(), order.Number, models.OrderStatusProcessed, nil)
 
 				require.Error(t, err, "updating already invalid order should fail")
 				require.ErrorIs(t, err, apperrors.ErrOrderAlreadyProcessed, "should return ErrOrderAlreadyProcessed error")

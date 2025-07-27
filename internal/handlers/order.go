@@ -4,10 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 	"time"
-
-	"github.com/shopspring/decimal"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
 	"github.com/nkiryanov/gophermart/internal/handlers/render"
@@ -18,21 +15,22 @@ import (
 )
 
 type orderResponse struct {
-	Number     string           `json:"number"`
-	Status     string           `json:"status"`
-	Accrual    *decimal.Decimal `json:"accrual,omitempty"`
-	UploadedAt time.Time        `json:"uploaded_at"`
+	Number     string    `json:"number"`
+	Status     string    `json:"status"`
+	Accrual    *float64  `json:"accrual,omitempty"`
+	UploadedAt time.Time `json:"uploaded_at"`
 }
 
 func orderToResponse(o *models.Order) orderResponse {
 	r := orderResponse{
 		Number:     o.Number,
-		Status:     strings.ToUpper(o.Status),
+		Status:     o.Status,
 		Accrual:    nil,
 		UploadedAt: o.UploadedAt,
 	}
-	if !o.Accrual.IsZero() {
-		r.Accrual = &o.Accrual
+	if o.Accrual != nil {
+		value, _ := o.Accrual.Float64()
+		r.Accrual = &value
 	}
 	return r
 }

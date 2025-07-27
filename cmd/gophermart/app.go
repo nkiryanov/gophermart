@@ -13,13 +13,20 @@ import (
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
 	"github.com/nkiryanov/gophermart/internal/service/order"
+	"github.com/nkiryanov/gophermart/internal/service/orderprocessor"
 	"github.com/nkiryanov/gophermart/internal/service/user"
 )
+
+type orderProcessor interface {
+	Process(ctx context.Context) <-chan struct{}
+}
 
 type ServerApp struct {
 	ListenAddr string
 	Handler    http.Handler
 	Logger     logger.Logger
+
+	OrderProcessor orderProcessor
 }
 
 func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
@@ -50,6 +57,9 @@ func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 		return nil, fmt.Errorf("auth service initialization: %w", err)
 	}
 
+	// Initialize order processor
+	processor := orderprocessor.New(c.AccrualAddr, logger, orderService)
+
 	mux := handlers.NewRouter(
 		authService,
 		orderService,
@@ -58,9 +68,10 @@ func NewServerApp(ctx context.Context, c *Config) (*ServerApp, error) {
 	)
 
 	return &ServerApp{
-		ListenAddr: c.ListenAddr,
-		Handler:    mux,
-		Logger:     logger,
+		ListenAddr:     c.ListenAddr,
+		Handler:        mux,
+		Logger:         logger,
+		OrderProcessor: processor,
 	}, nil
 }
 
@@ -71,7 +82,7 @@ func (s *ServerApp) Run(ctx context.Context) error {
 		Handler: s.Handler,
 	}
 
-	idleConnsClosed := make(chan struct{})
+	idleSrvClosed := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 
@@ -83,12 +94,15 @@ func (s *ServerApp) Run(ctx context.Context) error {
 		}
 
 		s.Logger.Info("HTTP server stopped")
-		close(idleConnsClosed)
+		close(idleSrvClosed)
 	}()
+
+	idleProcessorClosed := s.OrderProcessor.Process(ctx)
 
 	s.Logger.Info("Listening on address", "address", s.ListenAddr)
 	err := httpServer.ListenAndServe()
 
-	<-idleConnsClosed
+	<-idleSrvClosed
+	<-idleProcessorClosed
 	return err
 }

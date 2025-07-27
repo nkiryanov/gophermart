@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/shopspring/decimal"
 
 	"github.com/nkiryanov/gophermart/internal/repository"
 
@@ -42,11 +41,12 @@ func (r *OrderRepo) CreateOrder(ctx context.Context, number string, userID uuid.
 	// Order with defaults
 	o := models.Order{
 		ID:         orderID,
-		UploadedAt: now,
-		ModifiedAt: now,
 		Number:     number,
 		UserID:     userID,
 		Status:     models.OrderStatusNew,
+		Accrual:    nil,
+		UploadedAt: now,
+		ModifiedAt: now,
 	}
 
 	for _, option := range opts {
@@ -99,15 +99,15 @@ func (r *OrderRepo) ListOrders(ctx context.Context, opts repository.ListOrdersOp
 
 	fmt.Fprint(b, "ORDER BY uploaded_at DESC\n")
 
-	if opts.Limit != nil {
+	if opts.Limit > 0 {
 		fmt.Fprintf(b, "LIMIT $%d\n", argPos)
-		args = append(args, *opts.Limit)
+		args = append(args, opts.Limit)
 		argPos++
 	}
 
-	if opts.Offset != nil {
+	if opts.Offset > 0 {
 		fmt.Fprintf(b, "OFFSET $%d\n", argPos)
-		args = append(args, *opts.Offset)
+		args = append(args, opts.Offset)
 	}
 
 	rows, _ := r.DB.Query(ctx, b.String(), args...)
@@ -155,7 +155,7 @@ func (r OrderRepo) GetOrder(ctx context.Context, number string, lock bool) (mode
 	}
 }
 
-func (r *OrderRepo) UpdateOrder(ctx context.Context, number string, status *string, accrual *decimal.Decimal) (models.Order, error) {
+func (r *OrderRepo) UpdateOrder(ctx context.Context, number string, opts repository.UpdateOrderOpts) (models.Order, error) {
 	const updateOrder = `
 	UPDATE orders
 	SET status = coalesce($2, status), accrual = coalesce($3, accrual), modified_at = coalesce($4, modified_at)
@@ -164,12 +164,12 @@ func (r *OrderRepo) UpdateOrder(ctx context.Context, number string, status *stri
 	`
 	var modifiedAt *time.Time
 
-	if status != nil || accrual != nil {
+	if opts.Status != nil || opts.Accrual != nil {
 		t := time.Now()
 		modifiedAt = &t
 	}
 
-	rows, _ := r.DB.Query(ctx, updateOrder, number, status, accrual, modifiedAt)
+	rows, _ := r.DB.Query(ctx, updateOrder, number, opts.Status, opts.Accrual, modifiedAt)
 	order, err := pgx.CollectOneRow(rows, rowToOrder)
 
 	switch {

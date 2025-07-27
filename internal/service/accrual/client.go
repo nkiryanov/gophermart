@@ -20,19 +20,19 @@ const (
 	CodeUnknown    = "unknown"
 )
 
-type AccrualError struct {
+type Error struct {
 	Code string
 
 	RetryAfter time.Duration
 	Err        error
 }
 
-func (ra *AccrualError) Error() string {
+func (ra *Error) Error() string {
 	return fmt.Sprintf("code: %s, retry_after: %d, error: %v", ra.Code, ra.RetryAfter, ra.Err)
 }
 
-func NewAccrualError(code string, retryAfter int, err error) *AccrualError {
-	return &AccrualError{
+func NewAccrualError(code string, retryAfter int, err error) *Error {
+	return &Error{
 		Code:       code,
 		RetryAfter: time.Duration(retryAfter) * time.Second,
 		Err:        err,
@@ -46,16 +46,17 @@ type OrderAccrual struct {
 }
 
 type Client struct {
-	AccrualAddr string
+	addr string
 
 	client *http.Client
 	logger logger.Logger
 }
 
-func NewClient(addr string) *Client {
+func NewClient(addr string, logger logger.Logger) *Client {
 	return &Client{
-		AccrualAddr: addr,
-		client:      &http.Client{},
+		addr:   addr,
+		logger: logger,
+		client: &http.Client{},
 	}
 }
 
@@ -65,7 +66,7 @@ func (c *Client) GetOrderAccrual(ctx context.Context, number string) (OrderAccru
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.AccrualAddr+"/api/orders/"+number, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/api/orders/"+number, nil)
 	if err != nil {
 		return accrual, NewAccrualError(CodeUnknown, 0, fmt.Errorf("failed to create request: %w", err))
 	}
