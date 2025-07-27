@@ -41,7 +41,7 @@ func NewRouter(
 	apiuser.Handle("GET /orders", withAuth(handleListOrder(orderService, logger)))
 	apiuser.Handle("GET /balance", withAuth(handleUserBalance(userService, logger)))
 	apiuser.Handle("POST /balance/withdraw", withAuth(handleWithdraw(userService, logger)))
-	apiuser.Handle("GET /balance/withdrawals", withAuth(handleListWithdrawals(userService, logger)))
+	apiuser.Handle("GET /withdrawals", withAuth(handleListWithdrawals(userService, logger)))
 	apiuser.Handle("GET /me", withAuth(handleUserMe()))
 
 	root := http.NewServeMux()
