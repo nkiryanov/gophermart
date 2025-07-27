@@ -5,9 +5,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nkiryanov/gophermart/internal/apperrors"
+	"github.com/nkiryanov/gophermart/internal/models"
+	"github.com/nkiryanov/gophermart/internal/repository"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/testutil"
 )
@@ -19,17 +22,17 @@ func TestUser(t *testing.T) {
 	t.Cleanup(pg.Terminate)
 
 	// Helper function to create UserService within transaction
-	withTx := func(t *testing.T, fn func(s *UserService)) {
+	inTx := func(t *testing.T, fn func(s *UserService, storage repository.Storage)) {
 		testutil.InTx(pg.Pool, t, func(tx pgx.Tx) {
 			storage := postgres.NewStorage(tx)
 			userService := NewService(DefaultHasher, storage)
-			fn(userService)
+			fn(userService, storage)
 		})
 	}
 
 	t.Run("CreateUser", func(t *testing.T) {
 		t.Run("create ok", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				user, err := s.CreateUser(t.Context(), "test-user", "password123")
 
 				require.NoError(t, err, "creating new user should be ok")
@@ -39,7 +42,7 @@ func TestUser(t *testing.T) {
 				require.NotEqual(t, "password123", user.HashedPassword, "password should be hashed")
 				require.NotZero(t, user.CreatedAt, "created at should be set")
 
-				balance, err := s.storage.Balance().GetBalance(t.Context(), user.ID)
+				balance, err := s.storage.Balance().GetBalance(t.Context(), user.ID, false)
 
 				require.NoError(t, err, "balance creation should not fail")
 				require.Equal(t, user.ID, balance.UserID, "balance user ID should match created")
@@ -50,7 +53,7 @@ func TestUser(t *testing.T) {
 		})
 
 		t.Run("empty password fail", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				_, err := s.CreateUser(t.Context(), "test-user", "")
 
 				require.Error(t, err, "creating user with empty password should fail")
@@ -58,7 +61,7 @@ func TestUser(t *testing.T) {
 		})
 
 		t.Run("create duplicate user fail", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				_, err := s.CreateUser(t.Context(), "test-user", "password123")
 				require.NoError(t, err, "first user creation should succeed")
 
@@ -72,7 +75,7 @@ func TestUser(t *testing.T) {
 
 	t.Run("Login", func(t *testing.T) {
 		t.Run("login ok", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				// Create user first
 				createdUser, err := s.CreateUser(t.Context(), "test-user", "password123")
 				require.NoError(t, err)
@@ -87,7 +90,7 @@ func TestUser(t *testing.T) {
 		})
 
 		t.Run("invalid password fail", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				// Create user first
 				_, err := s.CreateUser(t.Context(), "test-user", "password123")
 				require.NoError(t, err)
@@ -100,7 +103,7 @@ func TestUser(t *testing.T) {
 		})
 
 		t.Run("not existed user fail", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				_, err := s.Login(t.Context(), "non-existed-user", "password123")
 
 				require.Error(t, err, "login with non-existent user should fail")
@@ -111,7 +114,7 @@ func TestUser(t *testing.T) {
 
 	t.Run("GetUserByID", func(t *testing.T) {
 		t.Run("existed ok", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				// Create user first
 				createdUser, err := s.CreateUser(t.Context(), "test-user", "password123")
 				require.NoError(t, err)
@@ -127,7 +130,7 @@ func TestUser(t *testing.T) {
 		})
 
 		t.Run("not existed fail", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				_, err := s.GetUserByID(t.Context(), uuid.New()) // Non-existent ID
 
 				require.Error(t, err, "getting non-existent user should fail")
@@ -138,7 +141,7 @@ func TestUser(t *testing.T) {
 
 	t.Run("GetBalance", func(t *testing.T) {
 		t.Run("new user", func(t *testing.T) {
-			withTx(t, func(s *UserService) {
+			inTx(t, func(s *UserService, _ repository.Storage) {
 				// Create user first
 				createdUser, err := s.CreateUser(t.Context(), "test-user", "password123")
 				require.NoError(t, err)
@@ -149,6 +152,48 @@ func TestUser(t *testing.T) {
 				require.Equal(t, createdUser.ID, balance.UserID, "balance user ID should match")
 				require.True(t, balance.Current.IsZero(), "initial balance should be zero")
 				require.True(t, balance.Withdrawn.IsZero(), "initial withdrawn should be zero")
+			})
+		})
+	})
+
+	t.Run("Withdrawn", func(t *testing.T) {
+		// Create initial user with balance 1000
+		setup := func(t *testing.T, userService *UserService, storage repository.Storage) models.User {
+			user, err := userService.CreateUser(t.Context(), "test-user", "password123")
+			require.NoError(t, err, "creating user for withdrawal test should not fail")
+
+			_, err = storage.Balance().UpdateBalance(t.Context(), models.Transaction{
+				UserID: user.ID,
+				Type:   models.TransactionTypeAccrual,
+				Amount: decimal.NewFromInt(1000), // Initial balance for testing
+			})
+			require.NoError(t, err, "initial balance update should not fail")
+
+			return user
+		}
+
+		t.Run("withdrawn insufficient fail", func(t *testing.T) {
+			inTx(t, func(s *UserService, storage repository.Storage) {
+				user := setup(t, s, storage)
+
+				_, err := s.Withdraw(t.Context(), user.ID, "1234", decimal.NewFromInt(1500)) // Trying to withdraw more than balance
+
+				require.Error(t, err, "withdrawing more than balance should fail")
+				require.ErrorIs(t, err, apperrors.ErrBalanceInsufficient)
+			})
+		})
+
+		t.Run("withdrawn ok", func(t *testing.T) {
+			inTx(t, func(s *UserService, storage repository.Storage) {
+				user := setup(t, s, storage)
+
+				// Withdraw 900 from balance
+				withdrawnAmount := decimal.NewFromInt(900)
+				balance, err := s.Withdraw(t.Context(), user.ID, "1234", withdrawnAmount)
+
+				require.NoError(t, err, "withdrawing valid amount should succeed")
+				require.True(t, balance.Current.Equal(decimal.NewFromInt(100)), "not expected balance after withdrawal")
+				require.Truef(t, balance.Withdrawn.Equal(withdrawnAmount), "withdrawn amount should be %s", withdrawnAmount.String())
 			})
 		})
 	})

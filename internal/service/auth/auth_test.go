@@ -26,8 +26,8 @@ func Test_Auth(t *testing.T) {
 
 	// Begin new db transaction and create new AuthService
 	// Rollback transaction when test stops
-	inTx := func(dbpool *pgxpool.Pool, accessTTL time.Duration, refreshTTL time.Duration, t *testing.T, fn func(s *AuthService)) {
-		testutil.InTx(dbpool, t, func(tx pgx.Tx) {
+	inTx := func(pool *pgxpool.Pool, accessTTL time.Duration, refreshTTL time.Duration, t *testing.T, fn func(s *AuthService)) {
+		testutil.InTx(pool, t, func(tx pgx.Tx) {
 			storage := postgres.NewStorage(tx)
 
 			tokenManager, err := tokenmanager.New(

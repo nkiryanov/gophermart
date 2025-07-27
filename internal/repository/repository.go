@@ -42,7 +42,10 @@ type OrderRepo interface {
 
 type BalanceRepo interface {
 	CreateBalance(ctx context.Context, userID uuid.UUID) error
-	GetBalance(ctx context.Context, userID uuid.UUID) (models.Balance, error)
+	GetBalance(ctx context.Context, userID uuid.UUID, lock bool) (models.Balance, error)
+	UpdateBalance(ctx context.Context, t models.Transaction) (models.Balance, error)
+	CreateTransaction(ctx context.Context, t models.Transaction) (models.Transaction, error)
+	ListTransactions(ctx context.Context, userID uuid.UUID, types []string) ([]models.Transaction, error)
 }
 
 type Storage interface {

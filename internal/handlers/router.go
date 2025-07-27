@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+
 	"github.com/nkiryanov/gophermart/internal/handlers/middleware"
 	"github.com/nkiryanov/gophermart/internal/logger"
 	"github.com/nkiryanov/gophermart/internal/models"
@@ -38,6 +40,8 @@ func NewRouter(
 	apiuser.Handle("POST /orders", withAuth(handleCreateOrder(orderService, logger)))
 	apiuser.Handle("GET /orders", withAuth(handleListOrder(orderService, logger)))
 	apiuser.Handle("GET /balance", withAuth(handleUserBalance(userService, logger)))
+	apiuser.Handle("POST /balance/withdraw", withAuth(handleWithdraw(userService, logger)))
+	apiuser.Handle("GET /balance/withdrawals", withAuth(handleListWithdrawals(userService, logger)))
 	apiuser.Handle("GET /me", withAuth(handleUserMe()))
 
 	root := http.NewServeMux()
@@ -81,4 +85,6 @@ type orderService interface {
 
 type userService interface {
 	GetBalance(ctx context.Context, userID uuid.UUID) (models.Balance, error)
+	Withdraw(ctx context.Context, userID uuid.UUID, orderNum string, amount decimal.Decimal) (models.Balance, error)
+	GetWithdrawals(ctx context.Context, userID uuid.UUID) ([]models.Transaction, error)
 }
