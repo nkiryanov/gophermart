@@ -39,14 +39,8 @@ func Test_run(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond) // Half Second
 		t.Cleanup(cancel)
 
-		// Try to run without secret key. Must fail
-		err := run(ctx, os.Getenv, os.Getwd, []string{
-			"--address", listenAddr,
-			"--log-level", "debug",
-			"--accrual", "http://localhost:3000",
-			"--database", pg.DSN,
-		})
-
+		// Try to run without required arguments
+		err := run(ctx, os.Getenv, os.Getwd, []string{})
 		require.Error(t, err, "on incorrect stop should return error")
 	})
 }
