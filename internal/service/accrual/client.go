@@ -20,19 +20,19 @@ const (
 	CodeUnknown    = "unknown"
 )
 
-type AccrualError struct {
+type Error struct {
 	Code string
 
 	RetryAfter time.Duration
 	Err        error
 }
 
-func (ra *AccrualError) Error() string {
+func (ra *Error) Error() string {
 	return fmt.Sprintf("code: %s, retry_after: %d, error: %v", ra.Code, ra.RetryAfter, ra.Err)
 }
 
-func NewAccrualError(code string, retryAfter int, err error) *AccrualError {
-	return &AccrualError{
+func NewAccrualError(code string, retryAfter int, err error) *Error {
+	return &Error{
 		Code:       code,
 		RetryAfter: time.Duration(retryAfter) * time.Second,
 		Err:        err,

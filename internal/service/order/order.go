@@ -39,10 +39,10 @@ func (s *OrderService) ListOrders(ctx context.Context, opts repository.ListOrder
 	return s.storage.Order().ListOrders(ctx, opts)
 }
 
-func (s *OrderService) SetProcessed(ctx context.Context, number string, newStatus string, accrual decimal.Decimal) (models.Order, error) {
+func (s *OrderService) SetProcessed(ctx context.Context, number string, newStatus string, accrual *decimal.Decimal) (models.Order, error) {
 	var order models.Order
 
-	if accrual.IsNegative() {
+	if accrual != nil && accrual.IsNegative() {
 		return order, errors.New("accrual can't be negative")
 	}
 
@@ -63,25 +63,32 @@ func (s *OrderService) SetProcessed(ctx context.Context, number string, newStatu
 			return apperrors.ErrOrderAlreadyProcessed
 		}
 
-		// Update order and related objects
-		t, err := storage.Balance().CreateTransaction(ctx, models.Transaction{
-			ID:          uuid.New(),
-			ProcessedAt: time.Now(),
-			UserID:      order.UserID,
-			OrderNumber: order.Number,
-			Type:        models.TransactionTypeAccrual,
-			Amount:      accrual,
+		// Update order status and accrual
+		order, err = storage.Order().UpdateOrder(ctx, number, repository.UpdateOrderOpts{
+			Status:  &newStatus,
+			Accrual: accrual,
 		})
 		if err != nil {
 			return err
 		}
-		_, err = storage.Balance().UpdateBalance(ctx, t)
-		if err != nil {
-			return err
-		}
-		order, err = storage.Order().UpdateOrder(ctx, number, &newStatus, &accrual)
-		if err != nil {
-			return err
+
+		// Update user balance if accrual is set
+		if accrual != nil {
+			t, err := storage.Balance().CreateTransaction(ctx, models.Transaction{
+				ID:          uuid.New(),
+				ProcessedAt: time.Now(),
+				UserID:      order.UserID,
+				OrderNumber: order.Number,
+				Type:        models.TransactionTypeAccrual,
+				Amount:      *accrual,
+			})
+			if err != nil {
+				return err
+			}
+			_, err = storage.Balance().UpdateBalance(ctx, t)
+			if err != nil {
+				return err
+			}
 		}
 
 		return nil

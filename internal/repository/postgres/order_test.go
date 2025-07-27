@@ -45,7 +45,7 @@ func TestOrders(t *testing.T) {
 					require.WithinDuration(t, time.Now(), order.UploadedAt, time.Second)
 					require.WithinDuration(t, time.Now(), order.ModifiedAt, time.Second)
 					require.Equal(t, models.OrderStatusNew, order.Status)
-					require.True(t, order.Accrual.IsZero(), "accrual should be zero for new orders")
+					require.Nil(t, order.Accrual, "accrual should be nil for new orders")
 				})
 			})
 
@@ -96,7 +96,7 @@ func TestOrders(t *testing.T) {
 
 			t.Run("single order", func(t *testing.T) {
 				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
-					createdOrder, err := storage.Order().CreateOrder(t.Context(), "456", user.ID)
+					createdOrder, err := storage.Order().CreateOrder(t.Context(), "456", user.ID, repository.WithOrderAccrual(decimal.RequireFromString("100.50")))
 					require.NoError(t, err)
 
 					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersOpts{UserID: &user.ID})
@@ -108,7 +108,8 @@ func TestOrders(t *testing.T) {
 					require.Equal(t, createdOrder.Number, order.Number)
 					require.Equal(t, createdOrder.UserID, order.UserID)
 					require.Equal(t, createdOrder.Status, order.Status)
-					require.Equal(t, createdOrder.Accrual, order.Accrual)
+					require.NotNil(t, order.Accrual, "accrual should not be nil")
+					require.True(t, createdOrder.Accrual.Equal(*order.Accrual), "accrual should match created order")
 				})
 			})
 
@@ -116,10 +117,7 @@ func TestOrders(t *testing.T) {
 				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
 					order, err := storage.Order().CreateOrder(t.Context(), "111", user.ID)
 					require.NoError(t, err)
-					yaOrder, err := storage.Order().CreateOrder(t.Context(), "222", user.ID,
-						repository.WithOrderStatus(models.OrderStatusProcessed),
-						repository.WithOrderAccrual(decimal.RequireFromString("100.50")),
-					)
+					yaOrder, err := storage.Order().CreateOrder(t.Context(), "222", user.ID)
 					require.NoError(t, err)
 
 					orders, err := storage.Order().ListOrders(t.Context(), repository.ListOrdersOpts{UserID: &user.ID})
@@ -127,11 +125,7 @@ func TestOrders(t *testing.T) {
 
 					require.Len(t, orders, 2)
 					require.Equal(t, yaOrder.ID, orders[0].ID)
-					require.Equal(t, yaOrder.Status, orders[0].Status)
-					require.Equal(t, yaOrder.Accrual, orders[0].Accrual)
 					require.Equal(t, order.ID, orders[1].ID)
-					require.Equal(t, order.Status, orders[1].Status)
-					require.Equal(t, order.Accrual, orders[1].Accrual)
 				})
 			})
 
@@ -160,12 +154,13 @@ func TestOrders(t *testing.T) {
 					status := models.OrderStatusProcessed
 					accrual := decimal.RequireFromString("123.45")
 
-					got, err := storage.Order().UpdateOrder(t.Context(), order.Number, &status, &accrual)
+					got, err := storage.Order().UpdateOrder(t.Context(), order.Number, repository.UpdateOrderOpts{Status: &status, Accrual: &accrual})
 					require.NoError(t, err, "updating order should not fail")
 
 					require.Equal(t, order.ID, got.ID, "order ID should not change")
 					require.Equal(t, status, got.Status, "order status should be updated")
-					require.True(t, accrual.Equal(got.Accrual), "order accrual should be updated")
+					require.NotNil(t, got.Accrual, "accrual should not be nil after update")
+					require.True(t, got.Accrual.Equal(accrual), "order accrual should be updated")
 					require.Equal(t, order.UserID, got.UserID)
 					require.Equal(t, order.UploadedAt, got.UploadedAt, "should not changed")
 					require.NotEqual(t, order.ModifiedAt, got.ModifiedAt, "modified_at should be updated")
@@ -174,12 +169,12 @@ func TestOrders(t *testing.T) {
 
 			t.Run("do nothing if all nil", func(t *testing.T) {
 				inTx(t, tx, func(_ pgx.Tx, storage repository.Storage) {
-					got, err := storage.Order().UpdateOrder(t.Context(), order.Number, nil, nil)
+					got, err := storage.Order().UpdateOrder(t.Context(), order.Number, repository.UpdateOrderOpts{})
 					require.NoError(t, err, "updating order should not fail")
 
 					require.Equal(t, order.ID, got.ID, "order ID should not change")
 					require.Equal(t, order.Status, got.Status, "order status should be updated")
-					require.True(t, got.Accrual.Equal(order.Accrual), "order accrual should be updated")
+					require.Nil(t, got.Accrual, "accrual should be nil after update")
 					require.Equal(t, order.UserID, got.UserID)
 					require.Equal(t, order.UploadedAt, got.UploadedAt, "should not changed")
 					require.Equal(t, order.ModifiedAt, got.ModifiedAt, "modified_at must not be changed")

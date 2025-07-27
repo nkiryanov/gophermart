@@ -23,7 +23,7 @@ create table orders (
     modified_at timestamptz not null default now(),
     number varchar(255) not null unique,
     user_id uuid not null references users(id) on delete cascade,
-    status varchar(32) not null check (status in ('new', 'processing', 'invalid', 'processed')),
+    status varchar(32) not null check (status in ('NEW', 'PROCESSING', 'INVALID', 'PROCESSED')),
     accrual numeric(10, 2)
 );
 create index idx_orders_user_id on orders(user_id);
@@ -35,7 +35,7 @@ create table transactions (
     processed_at timestamptz not null default now(),
     user_id uuid not null references users(id) on delete cascade,
     order_number varchar(255) not null,
-    type varchar(32) not null check (type in ('withdrawal', 'accrual')),
+    type varchar(32) not null check (type in ('WITHDRAWAL', 'ACCRUAL')),
     amount numeric(10, 2) not null
 );
 create index idx_transactions_user_id_type on transactions(user_id, type);

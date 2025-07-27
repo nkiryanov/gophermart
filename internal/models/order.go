@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	OrderStatusNew        = "new"
-	OrderStatusProcessing = "processing"
-	OrderStatusInvalid    = "invalid"
-	OrderStatusProcessed  = "processed"
+	OrderStatusNew        = "NEW"
+	OrderStatusProcessing = "PROCESSING"
+	OrderStatusInvalid    = "INVALID"
+	OrderStatusProcessed  = "PROCESSED"
 )
 
 type Order struct {
@@ -18,7 +18,7 @@ type Order struct {
 	Number     string
 	UserID     uuid.UUID
 	Status     string
-	Accrual    decimal.Decimal
+	Accrual    *decimal.Decimal
 	UploadedAt time.Time
 	ModifiedAt time.Time
 }
