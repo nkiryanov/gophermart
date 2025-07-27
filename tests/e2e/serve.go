@@ -11,6 +11,7 @@ import (
 
 	"github.com/nkiryanov/gophermart/internal/handlers"
 	"github.com/nkiryanov/gophermart/internal/logger"
+	"github.com/nkiryanov/gophermart/internal/repository"
 	"github.com/nkiryanov/gophermart/internal/repository/postgres"
 	"github.com/nkiryanov/gophermart/internal/service/auth"
 	"github.com/nkiryanov/gophermart/internal/service/auth/tokenmanager"
@@ -20,6 +21,7 @@ import (
 )
 
 type Services struct {
+	Storage      repository.Storage
 	AuthService  *auth.AuthService
 	OrderService *order.OrderService
 	UserService  *user.UserService
@@ -54,6 +56,7 @@ func ServeInTx(dbpool *pgxpool.Pool, t *testing.T, fn func(tx pgx.Tx, srvURL str
 		defer srv.Close()
 
 		fn(tx, srv.URL, Services{
+			Storage:      storage,
 			AuthService:  authService,
 			OrderService: orderService,
 			UserService:  userService,

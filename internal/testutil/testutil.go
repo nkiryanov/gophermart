@@ -6,6 +6,7 @@ import (
 	"net"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -102,4 +103,13 @@ func InTx(dbtx dbtx, t *testing.T, testFunc func(tx pgx.Tx)) {
 	}()
 
 	testFunc(tx)
+}
+
+func MustParseTime(t *testing.T, value string) time.Time {
+	t.Helper()
+	const layout = "2006-01-02 15:04:05Z"
+
+	parsed, err := time.Parse(layout, value)
+	require.NoError(t, err)
+	return parsed
 }
