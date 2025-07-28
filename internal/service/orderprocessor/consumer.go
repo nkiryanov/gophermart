@@ -64,6 +64,7 @@ func (c *Consumer) worker(ctx context.Context, in <-chan models.Order) {
 		select {
 		case <-ctx.Done():
 			return
+
 		case order, ok := <-in:
 			if !ok {
 				c.logger.Debug("Consumer worker stopped, input channel closed")
@@ -79,20 +80,24 @@ func (c *Consumer) worker(ctx context.Context, in <-chan models.Order) {
 				if err != nil {
 					c.logger.Error("Failed to set order as processed", "error", err, "order_number", order.Number)
 				}
+
 			case errors.As(err, &accErr):
 				switch accErr.Code {
 				case accrual.CodeRetryAfter:
 					c.logger.Info("Rate limit exceeded, waiting", "retry_after", accErr.RetryAfter)
 					c.waitUntil.Store(time.Now().Add(accErr.RetryAfter).Unix())
+
 				case accrual.CodeNoContent:
 					c.logger.Info("No content for order", "order_number", order.Number)
 					order, err := c.orderService.SetProcessed(ctx, order.Number, models.OrderStatusInvalid, nil)
 					if err != nil {
 						c.logger.Error("Failed to set order as invalid", "error", err, "order_number", order.Number)
 					}
+
 				default:
 					c.logger.Error("Unknown error from accrual service", "error", err, "order_number", order.Number)
 				}
+
 			default:
 				c.logger.Error("unexpected error from accrual service", "error", err, "order_number", order.Number)
 			}

@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	defaultCountWorkers    = 10               // Number of workers to process orders
-	defaultProduceInterval = 10 * time.Second // Interval for producing orders
+	defaultCountWorkers     = 10               // Number of workers to process orders
+	defaultProduceInterval  = 10 * time.Second // Interval for producing orders
+	defaultProduceBatchSize = 100              // Default batch size for processing orders
 )
 
 type accrualClient interface {
@@ -43,6 +44,7 @@ func New(accrualAddr string, logger logger.Logger, orderService orderService) *P
 		},
 		producer: &Producer{
 			interval:     defaultProduceInterval,
+			batchSize:    defaultProduceBatchSize,
 			orderService: orderService,
 			logger:       logger,
 		},
