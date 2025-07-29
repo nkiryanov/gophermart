@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+__debug_*
 
 # Test binary, built with `go test -c`
 *.test
@@ -12,8 +13,8 @@
 *.out
 
 # Binaries
-cmd/gophermart/main
 cmd/gophermart/gophermart
+cmd/gensecret/gensecret
 
 # Dependency directories (remove the comment below to include it)
 vendor/
@@ -21,3 +22,9 @@ vendor/
 # IDEs directories
 .idea
 .vscode
+
+# Environment configuration files
+.env
+
+# masOS staff
+.DS_Store

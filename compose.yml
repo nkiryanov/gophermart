@@ -1,0 +1,10 @@
+---
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports: 
+      - "25432:5432"
+    environment:
+      POSTGRES_DB: gophermart
+      POSTGRES_USER: gophermart
+      POSTGRES_HOST_AUTH_METHOD: trust

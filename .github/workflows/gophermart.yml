@@ -6,13 +6,13 @@ on:
   push:
     branches:
       - main
-      - master
+      - review
 
 jobs:
 
   build:
     runs-on: ubuntu-latest
-    container: golang:1.23
+    container: golang:1.24
 
     services:
       postgres:
@@ -28,10 +28,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Download autotests binaries
-        uses: robinraju/release-downloader@v1.8
+        uses: robinraju/release-downloader@v1.12
         with:
           repository: Yandex-Practicum/go-autotests
           latest: true
