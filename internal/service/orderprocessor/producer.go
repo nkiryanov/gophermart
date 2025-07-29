@@ -13,10 +13,12 @@ type Producer struct {
 	interval     time.Duration
 	logger       logger.Logger
 	orderService orderService
+	batchSize    int
 }
 
 func (p *Producer) Produce(ctx context.Context, out chan<- models.Order) <-chan struct{} {
 	idleStopped := make(chan struct{})
+	p.logger.Debug("Starting producer", "interval", p.interval, "batch_size", p.batchSize)
 
 	go func() {
 		defer close(idleStopped)
@@ -31,11 +33,11 @@ func (p *Producer) Produce(ctx context.Context, out chan<- models.Order) <-chan 
 				return
 
 			case <-ticker.C:
-				p.logger.Debug("Producer tick", "interval", p.interval)
+				p.logger.Debug("Producer tick: fetching orders")
 
 				orders, err := p.orderService.ListOrders(ctx, repository.ListOrdersOpts{
 					Statuses: []string{models.OrderStatusNew, models.OrderStatusProcessing},
-					Limit:    100, // Limit to avoid overwhelming the channel
+					Limit:    p.batchSize,
 				})
 				if err != nil {
 					p.logger.Error("Failed to list orders", "error", err)

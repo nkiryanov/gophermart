@@ -53,6 +53,11 @@ type Client struct {
 }
 
 func NewClient(addr string, logger logger.Logger) *Client {
+	// Address has to have scheme. Add it manually if not set
+	if !strings.Contains(addr, "://") {
+		addr = "http://" + addr
+	}
+
 	return &Client{
 		addr:   addr,
 		logger: logger,
